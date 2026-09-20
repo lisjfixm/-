@@ -27,9 +27,16 @@ jobs:
 
       # 1) 解開專案（你上傳的檔名是 末日.zip）
       - name: Unzip project
+        shell: pwsh
         run: |
           Expand-Archive -Path "末日.zip" -DestinationPath project -Force
-          Get-ChildItem project
+          Write-Host "--- project/ 第一層 ---"
+          Get-ChildItem project | Select-Object Name,Mode | Format-Table -AutoSize
+          Write-Host "--- 找專案根目錄（含 package.json 或 project.json） ---"
+          Get-ChildItem -Recurse -Filter "package.json" project -Depth 2 | Select-Object FullName
+          Get-ChildItem -Recurse -Filter "project.json" project -Depth 2 | Select-Object FullName
+          Write-Host "--- 找 assets 資料夾 ---"
+          Get-ChildItem -Recurse -Directory -Filter "assets" project -Depth 2 | Select-Object FullName
 
       # 2) JDK 11（Cocos 3.6 相容）
       - name: Set up JDK 11
@@ -105,13 +112,18 @@ jobs:
         run: |
           $creator = (Get-ChildItem -Recurse -Filter "CocosCreator.exe" cocos | Select-Object -First 1).FullName
           Write-Host "Editor: $creator"
-          $proj = (Resolve-Path project).Path
+
+          # 自動找專案根目錄：找含 project.json 的資料夾
+          $pj = Get-ChildItem -Recurse -Filter "project.json" project -Depth 2 | Select-Object -First 1
+          if ($pj) { $proj = Split-Path $pj.FullName; Write-Host "Detected project root: $proj" }
+          else { $proj = (Resolve-Path project).Path; Write-Host "Fallback project root: $proj" }
+
           $cfg  = (Resolve-Path build.json).Path
           $log  = (Join-Path (Get-Location).Path build.log)
           $editorDir = Split-Path $creator
           Push-Location $editorDir
 
-          $cmd = "`"$creator`" --project `"$proj`" --build `"configPath=$cfg`" --logDest `"$log`" --no-sandbox --disable-gpu --disable-software-rasterizer --disable-dev-shm-usage 1>stdout.txt 2>stderr.txt"
+          $cmd = "`"$creator`" --path `"$proj`" --build `"platform=android;debug=false;configPath=$cfg`" --logDest `"$log`" --no-sandbox --disable-gpu 1>stdout.txt 2>stderr.txt"
           Write-Host "Running: $cmd"
           & cmd /c $cmd
           Write-Host "Exit code: $LASTEXITCODE"
@@ -123,6 +135,8 @@ jobs:
           if (Test-Path stderr.txt) { Get-Content stderr.txt -Tail 60 }
           Write-Host "---- build.log tail ----"
           if (Test-Path $log) { Get-Content $log -Tail 120 } else { Write-Host "(no build.log)" }
+          Write-Host "---- Windows 事件日誌（應用程式錯誤） ----"
+          Get-WinEvent -FilterHashtable @{LogName='Application'; Level=2; StartTime=(Get-Date).AddMinutes(-15)} -MaxEvents 5 -ErrorAction SilentlyContinue | Select-Object TimeCreated,Message | Format-List
 
       # 8) 撿出 APK
       - name: Locate APK
@@ -141,3 +155,4 @@ jobs:
           name: MoRiTeGongDui-APK
           path: ${{ steps.apk.outputs.path }}
           if-no-files-found: error
+    
