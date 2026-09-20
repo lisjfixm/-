@@ -100,11 +100,25 @@ jobs:
       - name: Build APK
         shell: pwsh
         run: |
-          $creator = Get-ChildItem -Recurse -Filter "CocosCreator.exe" cocos | Select-Object -First 1
-          Write-Host "Editor: $($creator.FullName)"
-          & $creator.FullName --project (Resolve-Path project).Path --build "configPath=$(Resolve-Path build.json)" --logDest build.log
+          $creator = (Get-ChildItem -Recurse -Filter "CocosCreator.exe" cocos | Select-Object -First 1).FullName
+          Write-Host "Editor: $creator"
+          $proj = (Resolve-Path project).Path
+          $cfg  = (Resolve-Path build.json).Path
+          $log  = (Join-Path (Get-Location).Path build.log)
+          $editorDir = Split-Path $creator
+          Push-Location $editorDir
+          $args = @(
+            "--project", "`"$proj`"",
+            "--build", "`"configPath=$cfg`"",
+            "--logDest", "`"$log`"",
+            "--no-sandbox", "--disable-gpu"
+          )
+          Write-Host "Running: $creator $args"
+          $p = Start-Process -FilePath $creator -ArgumentList $args -Wait -PassThru -NoNewWindow
+          Pop-Location
+          Write-Host "Cocos exit code: $($p.ExitCode)"
           Write-Host "---- build.log tail ----"
-          if (Test-Path build.log) { Get-Content build.log -Tail 80 }
+          if (Test-Path $log) { Get-Content $log -Tail 120 } else { Write-Host "(no build.log)" }
 
       # 8) 撿出 APK
       - name: Locate APK
@@ -123,4 +137,3 @@ jobs:
           name: MoRiTeGongDui-APK
           path: ${{ steps.apk.outputs.path }}
           if-no-files-found: error
-            
