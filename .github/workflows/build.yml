@@ -8,7 +8,7 @@ on:
 
 jobs:
   build-apk:
-    runs-on: windows-latest
+    runs-on: windows-2022
     timeout-minutes: 90
     env:
       # Cocos Creator 3.6.1 對應的 Android 工具鏈版本
@@ -111,7 +111,7 @@ jobs:
           $editorDir = Split-Path $creator
           Push-Location $editorDir
 
-          $cmd = "`"$creator`" --project `"$proj`" --build `"configPath=$cfg`" --logDest `"$log`" --no-sandbox 1>stdout.txt 2>stderr.txt"
+          $cmd = "`"$creator`" --project `"$proj`" --build `"configPath=$cfg`" --logDest `"$log`" --no-sandbox --disable-gpu --disable-software-rasterizer --disable-dev-shm-usage 1>stdout.txt 2>stderr.txt"
           Write-Host "Running: $cmd"
           & cmd /c $cmd
           Write-Host "Exit code: $LASTEXITCODE"
