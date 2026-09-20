@@ -99,40 +99,28 @@ jobs:
           $cfg | ConvertTo-Json -Depth 6 | Out-File -Encoding utf8 build.json
           Get-Content build.json
 
-      # 7) 診斷 + 執行打包
+      # 7) 執行打包（用 cmd /c 真正等到程式結束）
       - name: Build APK
         shell: pwsh
         run: |
           $creator = (Get-ChildItem -Recurse -Filter "CocosCreator.exe" cocos | Select-Object -First 1).FullName
           Write-Host "Editor: $creator"
-          Write-Host "--- cocos folder top level ---"
-          Get-ChildItem (Split-Path $creator) | Select-Object Name,Length | Format-Table -AutoSize
-
           $proj = (Resolve-Path project).Path
           $cfg  = (Resolve-Path build.json).Path
           $log  = (Join-Path (Get-Location).Path build.log)
           $editorDir = Split-Path $creator
           Push-Location $editorDir
 
-          # 先測試 exe 能不能啟動：--version，輸出導到檔案
-          Write-Host "=== diagnostic: --version ==="
-          & cmd /c "`"$creator`" --version 1>ver_out.txt 2>ver_err.txt"
-          Write-Host "version exit: $LASTEXITCODE"
-          Write-Host "--- ver_out.txt ---"; if (Test-Path ver_out.txt) { Get-Content ver_out.txt -Tail 30 }
-          Write-Host "--- ver_err.txt ---"; if (Test-Path ver_err.txt) { Get-Content ver_err.txt -Tail 30 }
-
-          # 實際打包（用 --path，build 參數直接寫）
-          Write-Host "=== real build ==="
-          $args = @(
-            "--path", "`"$proj`"",
-            "--build", "`"platform=android;debug=false;configPath=$cfg`"",
-            "--logDest", "`"$log`"",
-            "--no-sandbox"
-          )
-          Write-Host "Running: $creator $args"
-          $p = Start-Process -FilePath $creator -ArgumentList $args -Wait -PassThru -NoNewWindow
+          $cmd = "`"$creator`" --project `"$proj`" --build `"configPath=$cfg`" --logDest `"$log`" --no-sandbox 1>stdout.txt 2>stderr.txt"
+          Write-Host "Running: $cmd"
+          & cmd /c $cmd
+          Write-Host "Exit code: $LASTEXITCODE"
           Pop-Location
-          Write-Host "Cocos exit code: $($p.ExitCode)"
+
+          Write-Host "---- stdout ----"
+          if (Test-Path stdout.txt) { Get-Content stdout.txt -Tail 60 }
+          Write-Host "---- stderr ----"
+          if (Test-Path stderr.txt) { Get-Content stderr.txt -Tail 60 }
           Write-Host "---- build.log tail ----"
           if (Test-Path $log) { Get-Content $log -Tail 120 } else { Write-Host "(no build.log)" }
 
@@ -153,3 +141,4 @@ jobs:
           name: MoRiTeGongDui-APK
           path: ${{ steps.apk.outputs.path }}
           if-no-files-found: error
+ 
