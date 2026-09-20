@@ -45,30 +45,18 @@ jobs:
           echo "ANDROID_HOME=$env:ANDROID_HOME" >> $env:GITHUB_ENV
           echo "ANDROID_NDK_HOME=$env:ANDROID_HOME\\ndk\\${env:NDK_VER}" >> $env:GITHUB_ENV
 
-      # 4) 下載 Cocos Creator 3.6.1（官方檔名帶日期後綴，依發布日 2022-09-22 掃候選）
+      # 4) 下載 Cocos Creator 3.6.1（確切檔名：win-091618）
       - name: Download Cocos Creator
         shell: pwsh
         run: |
-          $base = "https://download.cocos.com/CocosCreator/v$env:COCOS_VER/CocosCreator-v$env:COCOS_VER-win32-"
-          $days = @("0922","0921","0923","0920","0924")
-          $hours = @("08","10","12","14","15","16","17","18","19","20","21","22")
-          $ok = $false
-          foreach ($d in $days) {
-            foreach ($h in $hours) {
-              $url = "$base${d}${h}.zip"
-              Write-Host "Trying $url"
-              try {
-                curl.exe -L --fail --max-time 30 -o cocos.zip $url
-                if ((Test-Path cocos.zip) -and (Get-Item cocos.zip).Length -gt 100000000) {
-                  Write-Host "SUCCESS: $url"
-                  $ok = $true
-                  break
-                }
-              } catch {}
-            }
-            if ($ok) { break }
+          $url = "https://download.cocos.com/CocosCreator/v$env:COCOS_VER/CocosCreator-v$env:COCOS_VER-win-091618.zip"
+          Write-Host "Downloading $url"
+          curl.exe -L --fail -o cocos.zip $url
+          if ((Test-Path cocos.zip) -and (Get-Item cocos.zip).Length -gt 100000000) {
+            Write-Host "Download OK"
+          } else {
+            Write-Error "下載失敗或檔案太小"; exit 1
           }
-          if (-not $ok) { Write-Error "找不到 Cocos Creator 3.6.1 下載檔，請把實際網址補進這個步驟"; exit 1 }
 
       - name: Extract Cocos Creator
         run: Expand-Archive -Path cocos.zip -DestinationPath cocos -Force
@@ -135,3 +123,4 @@ jobs:
           name: MoRiTeGongDui-APK
           path: ${{ steps.apk.outputs.path }}
           if-no-files-found: error
+            
