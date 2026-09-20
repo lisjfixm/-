@@ -17,6 +17,9 @@ jobs:
       NDK_VER: "23.2.8568313"
       COCOS_VER: "3.6.1"
       PACKAGE_NAME: "com.mrtgd.game"
+      # Electron 在 CI 上禁用 GPU，避免初始化崩潰
+      ELECTRON_DISABLE_GPU: "1"
+      QT_OPENGL: "software"
 
     steps:
       - name: Checkout
@@ -111,7 +114,12 @@ jobs:
             "--project", "`"$proj`"",
             "--build", "`"configPath=$cfg`"",
             "--logDest", "`"$log`"",
-            "--no-sandbox", "--disable-gpu"
+            "--no-sandbox",
+            "--disable-gpu",
+            "--disable-software-rasterizer",
+            "--disable-dev-shm-usage",
+            "--in-process-gpu",
+            "--use-gl=swiftshader"
           )
           Write-Host "Running: $creator $args"
           $p = Start-Process -FilePath $creator -ArgumentList $args -Wait -PassThru -NoNewWindow
@@ -137,3 +145,4 @@ jobs:
           name: MoRiTeGongDui-APK
           path: ${{ steps.apk.outputs.path }}
           if-no-files-found: error
+     
