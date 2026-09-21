@@ -1,13 +1,13 @@
 name: Build Android APK
 
+# 手機上推一下或到 Actions 頁手動執行都會觸發
 on:
   push:
     branches: [main, master]
   workflow_dispatch:
 
-concurrency:
-  group: android-build-${{ github.ref }}
-  cancel-in-progress: true
+permissions:
+  contents: read
 
 jobs:
   build-apk:
@@ -15,68 +15,65 @@ jobs:
     timeout-minutes: 90
 
     env:
+      # Cocos Creator 3.6.1 對應的 Android 工具鏈版本
       ANDROID_API: "30"
       BUILD_TOOLS: "30.0.3"
       NDK_VER: "23.2.8568313"
       COCOS_VER: "3.6.1"
       PACKAGE_NAME: "com.mrtgd.game"
-      PROJECT_ZIP: "末日.zip"
-      OUTPUT_NAME: "MoRiTeGongDui"
+      BUILD_OUTPUT_NAME: "MoRiTeGongDui"
+
+      # Electron 在 CI 上禁用 GPU，避免初始化崩潰
       ELECTRON_DISABLE_GPU: "1"
       QT_OPENGL: "software"
+
+      PROJECT_ZIP: "末日.zip"
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Validate project archive
+      - name: Validate project zip
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          Set-StrictMode -Version Latest
-
           if (-not (Test-Path $env:PROJECT_ZIP)) {
-            throw "Project zip not found: $env:PROJECT_ZIP"
+            throw "Missing project zip: $env:PROJECT_ZIP"
           }
+          $size = (Get-Item $env:PROJECT_ZIP).Length
+          Write-Host "Project zip found: $env:PROJECT_ZIP ($size bytes)"
 
-          $zip = [System.IO.Compression.ZipFile]::OpenRead($env:PROJECT_ZIP)
-          try {
-            $names = $zip.Entries | Select-Object -ExpandProperty FullName
-            if ($names -notmatch 'package\.json|project\.json') {
-              throw "The zip does not look like a Cocos project. Expected package.json or project.json."
-            }
-          } finally {
-            $zip.Dispose()
-          }
-
+      # 1) 解開專案
       - name: Unzip project
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          Set-StrictMode -Version Latest
+          $out = Join-Path $PWD 'project'
+          if (Test-Path $out) { Remove-Item $out -Recurse -Force }
 
-          if (-not (Test-Path $env:PROJECT_ZIP)) {
-            throw "Missing zip: $env:PROJECT_ZIP"
+          Expand-Archive -Path $env:PROJECT_ZIP -DestinationPath $out -Force
+
+          Write-Host "--- project/ 第一層 ---"
+          Get-ChildItem $out | Select-Object Name, Mode | Format-Table -AutoSize
+
+          $packageJson = Get-ChildItem -Recurse -Filter "package.json" $out | Select-Object -First 1
+          $projectJson = Get-ChildItem -Recurse -Filter "project.json" $out | Select-Object -First 1
+
+          if (-not $packageJson -and -not $projectJson) {
+            throw "No package.json or project.json found inside the zip."
           }
 
-          Expand-Archive -Path $env:PROJECT_ZIP -DestinationPath project -Force
+          if ($packageJson) { Write-Host "Found package.json: $($packageJson.FullName)" }
+          if ($projectJson) { Write-Host "Found project.json: $($projectJson.FullName)" }
 
-          $projRoot = Get-ChildItem -Path project -Recurse -File -Include package.json,project.json |
-            Select-Object -First 1 -ExpandProperty DirectoryName
-
-          if (-not $projRoot) {
-            throw "Could not find project root that contains package.json or project.json."
-          }
-
-          Write-Host "Project root: $projRoot"
-          Get-ChildItem $projRoot | Select-Object Name
-
+      # 2) JDK 11（Cocos 3.6 相容）
       - name: Set up JDK 11
         uses: actions/setup-java@v4
         with:
-          distribution: temurin
-          java-version: "11"
+          distribution: 'temurin'
+          java-version: '11'
 
+      # 3) Android SDK
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
@@ -84,13 +81,148 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          Set-StrictMode -Version Latest
-
-          & "$env:ANDROID_HOME\cmdline-tools\latest\bin\sdkmanager.bat" --licenses
-          & "$env:ANDROID_HOME\cmdline-tools\latest\bin\sdkmanager.bat" `
-            --install "platforms;android-$env:ANDROID_API" `
-                     "build-tools;$env:BUILD_TOOLS" `
-                     "ndk;$env:NDK_VER"
-
+          sdkmanager --install "platforms;android-${env:ANDROID_API}" "build-tools;${env:BUILD_TOOLS}" "ndk;${env:NDK_VER}"
           "ANDROID_HOME=$env:ANDROID_HOME" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "ANDROID_NDK_HOME=$env:ANDROID_HOME\ndk\$env:NDK_VER" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "ANDROID_NDK_HOME=$env:ANDROID_HOME\ndk\${env:NDK_VER}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      # 4) 下載 Cocos Creator
+      - name: Download Cocos Creator
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $url = "https://download.cocos.com/CocosCreator/v$env:COCOS_VER/CocosCreator-v$env:COCOS_VER-win-091618.zip"
+          Write-Host "Downloading $url"
+          Invoke-WebRequest -Uri $url -OutFile "cocos.zip" -UseBasicParsing
+
+          $zip = Get-Item "cocos.zip"
+          if ($zip.Length -lt 100MB) {
+            throw "Downloaded Cocos Creator zip is suspiciously small: $($zip.Length) bytes"
+          }
+
+          Write-Host "Download OK: $($zip.Length) bytes"
+
+      - name: Extract Cocos Creator
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (Test-Path "cocos") { Remove-Item "cocos" -Recurse -Force }
+          Expand-Archive -Path "cocos.zip" -DestinationPath "cocos" -Force
+
+      # 5) 告訴 Cocos Creator SDK / NDK 在哪
+      - name: Configure Cocos preferences
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $prefDir = Join-Path $env:APPDATA "CocosCreator\3.6.1"
+          New-Item -ItemType Directory -Force -Path $prefDir | Out-Null
+
+          $pref = [ordered]@{
+            sdk = [ordered]@{
+              android_sdk_root = $env:ANDROID_HOME
+              android_ndk_root = "$env:ANDROID_HOME\ndk\${env:NDK_VER}"
+              jdk_home = $env:JAVA_HOME
+            }
+          }
+
+          $pref | ConvertTo-Json -Depth 8 | Set-Content -Path (Join-Path $prefDir "packages.json") -Encoding UTF8
+          Get-Content (Join-Path $prefDir "packages.json")
+
+      # 6) 建立 build 設定
+      - name: Write build config
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $cfg = [ordered]@{
+            platform = "android"
+            buildPath = "build/android"
+            debug = $false
+            outputName = $env:BUILD_OUTPUT_NAME
+            mainBundleCompressionType = "merge_dep"
+            packages = [ordered]@{
+              android = [ordered]@{
+                package = $env:PACKAGE_NAME
+                orientation = [ordered]@{
+                  portrait = $false
+                  upsideDown = $false
+                  landscapeRight = $true
+                  landscapeLeft = $true
+                }
+                apiLevel = 30
+                appABIs = @("arm64-v8a")
+                useDebugKeystore = $true
+                keystorePath = ""
+                keystorePassword = ""
+                keystoreAlias = ""
+                keystoreAliasPassword = ""
+                appBundle = $false
+              }
+            }
+          }
+
+          $cfg | ConvertTo-Json -Depth 10 | Set-Content -Path "build.json" -Encoding UTF8
+          Get-Content "build.json"
+
+      # 7) 執行打包
+      - name: Build APK
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $creator = (Get-ChildItem -Recurse -Filter "CocosCreator.exe" -Path "cocos" | Select-Object -First 1).FullName
+          if (-not $creator) {
+            throw "CocosCreator.exe not found inside downloaded Cocos files."
+          }
+
+          $proj = (Resolve-Path "project").Path
+          $cfg = (Resolve-Path "build.json").Path
+          $log = Join-Path (Get-Location).Path "build.log"
+
+          Write-Host "Editor: $creator"
+          Write-Host "Project: $proj"
+          Write-Host "Config: $cfg"
+
+          & $creator --project "$proj" --build "configPath=$cfg" --logDest "$log" --no-sandbox
+          $exitCode = $LASTEXITCODE
+
+          Write-Host "Exit code: $exitCode"
+
+          if ($exitCode -ne 0) {
+            Write-Host "---- build.log ----"
+            if (Test-Path $log) { Get-Content $log -Tail 200 }
+            throw "Cocos build failed with exit code $exitCode"
+          }
+
+          Write-Host "---- build.log ----"
+          if (Test-Path $log) { Get-Content $log -Tail 200 }
+
+      # 8) 撿出 APK
+      - name: Locate APK
+        id: apk
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $apk = Get-ChildItem -Recurse -Filter "*.apk" -Path (Join-Path $PWD "project") -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTimeUtc -Descending |
+            Select-Object -First 1
+
+          if (-not $apk) {
+            $apk = Get-ChildItem -Recurse -Filter "*.apk" -Path $PWD -ErrorAction SilentlyContinue |
+              Where-Object { $_.FullName -notlike "*cocos*" } |
+              Sort-Object LastWriteTimeUtc -Descending |
+              Select-Object -First 1
+          }
+
+          if (-not $apk) {
+            throw "No APK found in project or workspace."
+          }
+
+          Write-Host "Found APK: $($apk.FullName)"
+          "path=$($apk.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: MoRiTeGongDui-APK
+          path: ${{ steps.apk.outputs.path }}
+          if-no-files-found: error
