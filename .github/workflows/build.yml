@@ -66,12 +66,12 @@ jobs:
           if ($packageJson) { Write-Host "Found package.json: $($packageJson.FullName)" }
           if ($projectJson) { Write-Host "Found project.json: $($projectJson.FullName)" }
 
-      # 2) JDK 11（Cocos 3.6 相容）
-      - name: Set up JDK 11
+      # 2) Android SDK 需要 Java 17，不能用 JDK 11
+      - name: Set up JDK 17 for Android SDK
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '11'
+          java-version: '17'
 
       # 3) Android SDK
       - name: Set up Android SDK
@@ -85,7 +85,14 @@ jobs:
           "ANDROID_HOME=$env:ANDROID_HOME" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "ANDROID_NDK_HOME=$env:ANDROID_HOME\ndk\${env:NDK_VER}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-      # 4) 下載 Cocos Creator
+      # 4) Cocos Creator 3.6.1 仍建議使用 JDK 11
+      - name: Set up JDK 11 for Cocos
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '11'
+
+      # 5) 下載 Cocos Creator
       - name: Download Cocos Creator
         shell: pwsh
         run: |
@@ -108,7 +115,7 @@ jobs:
           if (Test-Path "cocos") { Remove-Item "cocos" -Recurse -Force }
           Expand-Archive -Path "cocos.zip" -DestinationPath "cocos" -Force
 
-      # 5) 告訴 Cocos Creator SDK / NDK 在哪
+      # 6) 告訴 Cocos Creator SDK / NDK 在哪
       - name: Configure Cocos preferences
         shell: pwsh
         run: |
@@ -127,7 +134,7 @@ jobs:
           $pref | ConvertTo-Json -Depth 8 | Set-Content -Path (Join-Path $prefDir "packages.json") -Encoding UTF8
           Get-Content (Join-Path $prefDir "packages.json")
 
-      # 6) 建立 build 設定
+      # 7) 建立 build 設定
       - name: Write build config
         shell: pwsh
         run: |
@@ -162,7 +169,7 @@ jobs:
           $cfg | ConvertTo-Json -Depth 10 | Set-Content -Path "build.json" -Encoding UTF8
           Get-Content "build.json"
 
-      # 7) 執行打包
+      # 8) 執行打包
       - name: Build APK
         shell: pwsh
         run: |
@@ -195,7 +202,7 @@ jobs:
           Write-Host "---- build.log ----"
           if (Test-Path $log) { Get-Content $log -Tail 200 }
 
-      # 8) 撿出 APK
+      # 9) 撿出 APK
       - name: Locate APK
         id: apk
         shell: pwsh
