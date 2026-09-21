@@ -74,16 +74,27 @@ jobs:
           java-version: '17'
 
       # 3) Android SDK
+      # Use valid SDK packages only. Do NOT install the obsolete 'tools' package.
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: |
+            platform-tools
+            platforms;android-${{ env.ANDROID_API }}
+            build-tools;${{ env.BUILD_TOOLS }}
+            ndk;${{ env.NDK_VER }}
+          accept-android-sdk-licenses: true
 
-      - name: Install Android packages
+      - name: Export Android environment
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          sdkmanager --install "platforms;android-${env:ANDROID_API}" "build-tools;${env:BUILD_TOOLS}" "ndk;${env:NDK_VER}"
           "ANDROID_HOME=$env:ANDROID_HOME" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "ANDROID_NDK_HOME=$env:ANDROID_HOME\ndk\${env:NDK_VER}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+          if (-not (Test-Path "$env:ANDROID_HOME\ndk\${env:NDK_VER}")) {
+            throw "Android NDK not found at $env:ANDROID_HOME\ndk\${env:NDK_VER}"
+          }
 
       # 4) Cocos Creator 3.6.1 仍建議使用 JDK 11
       - name: Set up JDK 11 for Cocos
