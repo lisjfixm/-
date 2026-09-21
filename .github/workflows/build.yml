@@ -92,18 +92,32 @@ jobs:
         shell: pwsh
         run: |
           $cfg = @{
-            project = (Resolve-Path project).Path
             platform = "android"
             buildPath = "build/android"
             debug = $false
             outputName = "MoRiTeGongDui"
+            mainBundleCompressionType = "merge_dep"
             packages = @{
               android = @{
-                packageName = $env:PACKAGE_NAME
+                package = $env:PACKAGE_NAME
+                orientation = @{
+                  portrait = $false
+                  upsideDown = $false
+                  landscapeRight = $true
+                  landscapeLeft = $true
+                }
+                apiLevel = 30
+                appABIs = @("arm64-v8a")
+                useDebugKeystore = $true
+                keystorePath = ""
+                keystorePassword = ""
+                keystoreAlias = ""
+                keystoreAliasPassword = ""
+                appBundle = $false
               }
             }
           }
-          $cfg | ConvertTo-Json -Depth 6 | Out-File -Encoding utf8 build.json
+          $cfg | ConvertTo-Json -Depth 8 | Out-File -Encoding utf8 build.json
           Get-Content build.json
 
       # 7) 執行打包（用 cmd /c 真正等到程式結束）
@@ -117,8 +131,9 @@ jobs:
           $editorDir = Split-Path $creator
           Push-Location $editorDir
 
-          # 用 3.6 正確語法 --project，最簡指令
-          $cmd = "`"$creator`" --project `"$proj`" --build `"platform=android;debug=false`" --logDest `"$log`" --no-sandbox"
+          # 用 configPath 帶完整 Android 設定
+          $cfg  = (Resolve-Path build.json).Path
+          $cmd = "`"$creator`" --project `"$proj`" --build `"configPath=$cfg`" --logDest `"$log`" --no-sandbox"
           Write-Host "Running: $cmd"
           & cmd /c $cmd
           Write-Host "Exit code: $LASTEXITCODE"
@@ -144,4 +159,3 @@ jobs:
           name: MoRiTeGongDui-APK
           path: ${{ steps.apk.outputs.path }}
           if-no-files-found: error
-              
