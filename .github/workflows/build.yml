@@ -112,31 +112,20 @@ jobs:
         run: |
           $creator = (Get-ChildItem -Recurse -Filter "CocosCreator.exe" cocos | Select-Object -First 1).FullName
           Write-Host "Editor: $creator"
-
-          # 自動找專案根目錄：找含 project.json 的資料夾
-          $pj = Get-ChildItem -Recurse -Filter "project.json" project -Depth 2 | Select-Object -First 1
-          if ($pj) { $proj = Split-Path $pj.FullName; Write-Host "Detected project root: $proj" }
-          else { $proj = (Resolve-Path project).Path; Write-Host "Fallback project root: $proj" }
-
-          $cfg  = (Resolve-Path build.json).Path
+          $proj = (Resolve-Path project).Path
           $log  = (Join-Path (Get-Location).Path build.log)
           $editorDir = Split-Path $creator
           Push-Location $editorDir
 
-          $cmd = "`"$creator`" --path `"$proj`" --build `"platform=android;debug=false;configPath=$cfg`" --logDest `"$log`" --no-sandbox --disable-gpu 1>stdout.txt 2>stderr.txt"
+          # 用 3.6 正確語法 --project，最簡指令
+          $cmd = "`"$creator`" --project `"$proj`" --build `"platform=android;debug=false`" --logDest `"$log`" --no-sandbox"
           Write-Host "Running: $cmd"
           & cmd /c $cmd
           Write-Host "Exit code: $LASTEXITCODE"
           Pop-Location
 
-          Write-Host "---- stdout ----"
-          if (Test-Path stdout.txt) { Get-Content stdout.txt -Tail 60 }
-          Write-Host "---- stderr ----"
-          if (Test-Path stderr.txt) { Get-Content stderr.txt -Tail 60 }
-          Write-Host "---- build.log tail ----"
-          if (Test-Path $log) { Get-Content $log -Tail 120 } else { Write-Host "(no build.log)" }
-          Write-Host "---- Windows 事件日誌（應用程式錯誤） ----"
-          Get-WinEvent -FilterHashtable @{LogName='Application'; Level=2; StartTime=(Get-Date).AddMinutes(-15)} -MaxEvents 5 -ErrorAction SilentlyContinue | Select-Object TimeCreated,Message | Format-List
+          Write-Host "---- build.log ----"
+          if (Test-Path $log) { Get-Content $log -Tail 200 } else { Write-Host "(no build.log)" }
 
       # 8) 撿出 APK
       - name: Locate APK
@@ -155,4 +144,4 @@ jobs:
           name: MoRiTeGongDui-APK
           path: ${{ steps.apk.outputs.path }}
           if-no-files-found: error
-    
+              
