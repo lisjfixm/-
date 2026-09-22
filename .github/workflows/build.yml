@@ -128,15 +128,14 @@ jobs:
           Write-Host "Editor: $creator"
           $workspace = (Get-Location).Path
           $proj = Join-Path $workspace "project"
-          $cfg  = Join-Path $workspace "build.json"
           $log  = Join-Path $workspace "build.log"
           Write-Host "Project: $proj"
-          Write-Host "Config: $cfg"
-          Write-Host "Log: $log"
           $editorDir = Split-Path $creator
           Push-Location $editorDir
 
-          $cmd = "`"$creator`" --project `"$proj`" --build `"configPath=$cfg`" --logDest `"$log`" --no-sandbox"
+          # 直接參數（configPath 會 crash，改用直接寫）
+          $buildArgs = "platform=android;debug=false;package=com.mrtgd.game;apiLevel=30;appABIs=arm64-v8a;outputName=MoRiTeGongDui"
+          $cmd = "`"$creator`" --project `"$proj`" --build `"$buildArgs`" --logDest `"$log`" --no-sandbox"
           Write-Host "Running: $cmd"
           & cmd /c $cmd
           Write-Host "Exit code: $LASTEXITCODE"
