@@ -126,13 +126,16 @@ jobs:
         run: |
           $creator = (Get-ChildItem -Recurse -Filter "CocosCreator.exe" cocos | Select-Object -First 1).FullName
           Write-Host "Editor: $creator"
-          $proj = (Resolve-Path project).Path
-          $log  = (Join-Path (Get-Location).Path build.log)
+          $workspace = (Get-Location).Path
+          $proj = Join-Path $workspace "project"
+          $cfg  = Join-Path $workspace "build.json"
+          $log  = Join-Path $workspace "build.log"
+          Write-Host "Project: $proj"
+          Write-Host "Config: $cfg"
+          Write-Host "Log: $log"
           $editorDir = Split-Path $creator
           Push-Location $editorDir
 
-          # 用 configPath 帶完整 Android 設定
-          $cfg  = (Resolve-Path build.json).Path
           $cmd = "`"$creator`" --project `"$proj`" --build `"configPath=$cfg`" --logDest `"$log`" --no-sandbox"
           Write-Host "Running: $cmd"
           & cmd /c $cmd
