@@ -1,6 +1,5 @@
 name: Build Android APK
 
-# 手機上推一下或到 Actions 頁手動執行都會觸發
 on:
   push:
     branches: [ main, master ]
@@ -11,13 +10,11 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 90
     env:
-      # Cocos Creator 3.6.1 對應的 Android 工具鏈版本
       ANDROID_API: "30"
       BUILD_TOOLS: "30.0.3"
       NDK_VER: "23.2.8568313"
       COCOS_VER: "3.6.1"
       PACKAGE_NAME: "com.mrtgd.game"
-      # Electron 在 CI 上禁用 GPU，避免初始化崩潰
       ELECTRON_DISABLE_GPU: "1"
       QT_OPENGL: "software"
 
@@ -25,27 +22,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 1) 解開專案（你上傳的檔名是 末日.zip）
       - name: Unzip project
         shell: pwsh
         run: |
           Expand-Archive -Path "末日.zip" -DestinationPath project -Force
-          Write-Host "--- project/ 第一層 ---"
-          Get-ChildItem project | Select-Object Name,Mode | Format-Table -AutoSize
-          Write-Host "--- 找專案根目錄（含 package.json 或 project.json） ---"
-          Get-ChildItem -Recurse -Filter "package.json" project -Depth 2 | Select-Object FullName
-          Get-ChildItem -Recurse -Filter "project.json" project -Depth 2 | Select-Object FullName
-          Write-Host "--- 找 assets 資料夾 ---"
-          Get-ChildItem -Recurse -Directory -Filter "assets" project -Depth 2 | Select-Object FullName
+          Write-Host "--- project root ---"
+          Get-ChildItem project | Select-Object Name | Format-Table -AutoSize
 
-      # 2) JDK 11（Cocos 3.6 相容）
       - name: Set up JDK 11
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '11'
 
-      # 3) Android SDK
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
@@ -55,7 +44,6 @@ jobs:
           echo "ANDROID_HOME=$env:ANDROID_HOME" >> $env:GITHUB_ENV
           echo "ANDROID_NDK_HOME=$env:ANDROID_HOME\\ndk\\${env:NDK_VER}" >> $env:GITHUB_ENV
 
-      # 4) 下載 Cocos Creator 3.6.1（確切檔名：win-091618）
       - name: Download Cocos Creator
         shell: pwsh
         run: |
@@ -65,13 +53,12 @@ jobs:
           if ((Test-Path cocos.zip) -and (Get-Item cocos.zip).Length -gt 100000000) {
             Write-Host "Download OK"
           } else {
-            Write-Error "下載失敗或檔案太小"; exit 1
+            Write-Error "Download failed"; exit 1
           }
 
       - name: Extract Cocos Creator
         run: Expand-Archive -Path cocos.zip -DestinationPath cocos -Force
 
-      # 5) 告訴 Cocos Creator SDK / NDK 在哪
       - name: Configure Cocos preferences
         shell: pwsh
         run: |
@@ -84,29 +71,36 @@ jobs:
               jdk_home = "$env:JAVA_HOME"
             }
           }
-          $pref | ConvertTo-Json -Depth 6 | Out-File -Encoding utf8 "$prefDir\\packages.json"
+          $json = $pref | ConvertTo-Json -Depth 6
+          [System.IO.File]::WriteAllText("$prefDir\\packages.json", $json, [System.Text.UTF8Encoding]::new($false))
           Get-Content "$prefDir\\packages.json"
 
-      # 6) 建立 build 設定
+      # 寫出正確的 build config JSON（無 BOM、欄位名正確）
       - name: Write build config
         shell: pwsh
         run: |
           $cfg = @{
+            name = "mrtgd"
             platform = "android"
-            buildPath = "build/android"
+            buildPath = "project://build"
             debug = $false
+            md5Cache = $false
+            sourceMaps = $false
             outputName = "MoRiTeGongDui"
             mainBundleCompressionType = "merge_dep"
+            useSplashScreen = $true
+            packAutoAtlas = $true
+            polyfills = @{ asyncFunctions = $false }
             packages = @{
               android = @{
-                package = $env:PACKAGE_NAME
+                packageName = "com.mrtgd.game"
                 orientation = @{
-                  portrait = $false
+                  portrait = $true
                   upsideDown = $false
-                  landscapeRight = $true
-                  landscapeLeft = $true
+                  landscapeRight = $false
+                  landscapeLeft = $false
                 }
-                apiLevel = 30
+                apiLevel = "android-30"
                 appABIs = @("arm64-v8a")
                 useDebugKeystore = $true
                 keystorePath = ""
@@ -114,13 +108,25 @@ jobs:
                 keystoreAlias = ""
                 keystoreAliasPassword = ""
                 appBundle = $false
+                androidInstant = $false
+                remoteUrl = ""
+                sdkPath = ""
+                ndkPath = ""
+                renderBackEnd = @{ vulkan = $false; gles3 = $true; gles2 = $false }
+              }
+              native = @{
+                encrypted = $false
+                xxteaKey = ""
+                compressZip = $false
+                JobSystem = "none"
               }
             }
           }
-          $cfg | ConvertTo-Json -Depth 8 | Out-File -Encoding utf8 build.json
+          $json = $cfg | ConvertTo-Json -Depth 10
+          [System.IO.File]::WriteAllText("build.json", $json, [System.Text.UTF8Encoding]::new($false))
+          Write-Host "--- build.json ---"
           Get-Content build.json
 
-      # 7) 執行打包（用 cmd /c 真正等到程式結束）
       - name: Build APK
         shell: pwsh
         run: |
@@ -128,31 +134,32 @@ jobs:
           Write-Host "Editor: $creator"
           $workspace = (Get-Location).Path
           $proj = Join-Path $workspace "project"
+          $cfg  = Join-Path $workspace "build.json"
           $log  = Join-Path $workspace "build.log"
           Write-Host "Project: $proj"
+          Write-Host "Config: $cfg"
+          Write-Host "Config exists: $(Test-Path $cfg)"
+
           $editorDir = Split-Path $creator
           Push-Location $editorDir
 
-          # 直接參數（configPath 會 crash，改用直接寫）
-          # 注意：Android required 欄位是 packageName（不是 package），apiLevel 格式是 android-30
-          $buildArgs = "platform=android;debug=false;packageName=com.mrtgd.game;apiLevel=android-30;appABIs=arm64-v8a;outputName=MoRiTeGongDui"
-          $cmd = "`"$creator`" --project `"$proj`" --build `"$buildArgs`" --logDest `"$log`" --no-sandbox"
+          # 用 configPath 載入完整 JSON 設定
+          $cmd = "`"$creator`" --project `"$proj`" --build `"configPath=$cfg`" --logDest `"$log`" --no-sandbox"
           Write-Host "Running: $cmd"
           & cmd /c $cmd
           Write-Host "Exit code: $LASTEXITCODE"
           Pop-Location
 
           Write-Host "---- build.log ----"
-          if (Test-Path $log) { Get-Content $log -Tail 200 } else { Write-Host "(no build.log)" }
+          if (Test-Path $log) { Get-Content $log -Tail 300 } else { Write-Host "(no build.log)" }
 
-      # 8) 撿出 APK
       - name: Locate APK
         id: apk
         shell: pwsh
         run: |
           $apk = Get-ChildItem -Recurse -Filter *.apk project\build 2>$null | Select-Object -First 1
           if (-not $apk) { $apk = Get-ChildItem -Recurse -Filter *.apk . 2>$null | Where-Object { $_.FullName -notlike "*cocos*" } | Select-Object -First 1 }
-          if (-not $apk) { Write-Error "找不到 APK"; exit 1 }
+          if (-not $apk) { Write-Error "APK not found"; exit 1 }
           Write-Host "Found: $($apk.FullName)"
           echo "path=$($apk.FullName)" >> $env:GITHUB_OUTPUT
 
