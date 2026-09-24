@@ -160,10 +160,21 @@ jobs:
           $editorDir = Split-Path $creator
           Write-Host "Project: $proj"
 
-          # 啟動 Cocos，然後輪詢 build.log 或 APK
+          # 先測試 Cocos 能不能啟動
+          Write-Host "Testing Cocos startup..."
+          Push-Location $editorDir
+          $testProc = Start-Process -FilePath $creator -ArgumentList @("--version", "--no-sandbox", "--disable-gpu") -PassThru -Wait -RedirectStandardOutput "version.txt" -RedirectStandardError "version_err.txt"
+          Write-Host "Version exit code: $($testProc.ExitCode)"
+          Write-Host "stdout: $(Get-Content version.txt -Raw)"
+          Write-Host "stderr: $(Get-Content version_err.txt -Raw)"
+          Pop-Location
+
+          # 啟動 Cocos build
           $buildArgs = "platform=android;debug=false;outputName=MoRiTeGongDui;buildPath=project://build"
           Write-Host "Build args: $buildArgs"
-          $p = Start-Process -FilePath $creator -ArgumentList @("--project", $proj, "--build", $buildArgs, "--logDest", $log, "--no-sandbox") -PassThru
+          Push-Location $editorDir
+          $p = Start-Process -FilePath $creator -ArgumentList @("--project", $proj, "--build", $buildArgs, "--logDest", $log, "--no-sandbox", "--disable-gpu", "--disable-software-rasterizer", "--disable-dev-shm-usage", "--in-process-gpu") -PassThru
+          Pop-Location
           Write-Host "Started PID: $($p.Id)"
           Start-Sleep -Seconds 15
           Write-Host "Running processes:"
