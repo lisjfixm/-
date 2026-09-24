@@ -58,12 +58,19 @@ jobs:
         run: |
           $url = "https://download.cocos.com/CocosCreator/v$env:COCOS_VER/CocosCreator-v$env:COCOS_VER-win-091618.zip"
           Write-Host "Downloading $url"
-          curl.exe -L --fail -o cocos.zip $url
-          if ((Test-Path cocos.zip) -and (Get-Item cocos.zip).Length -gt 100000000) {
-            Write-Host "Download OK"
-          } else {
-            Write-Error "Download failed"; exit 1
+          $ok = $false
+          for ($i = 1; $i -le 5; $i++) {
+            Write-Host "Attempt $i/5"
+            curl.exe -L --fail --retry 3 --retry-delay 5 -C - -o cocos.zip $url
+            if ((Test-Path cocos.zip) -and (Get-Item cocos.zip).Length -gt 900000000) {
+              Write-Host "Download OK: $((Get-Item cocos.zip).Length) bytes"
+              $ok = $true
+              break
+            }
+            Write-Host "Download incomplete, retrying..."
+            Start-Sleep -Seconds 10
           }
+          if (-not $ok) { Write-Error "Download failed after 5 attempts"; exit 1 }
 
       - name: Extract Cocos Creator
         run: Expand-Archive -Path cocos.zip -DestinationPath cocos -Force
