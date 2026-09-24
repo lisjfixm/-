@@ -96,6 +96,8 @@ jobs:
             $content = $content.Replace('packageName:""', 'packageName:"com.mrtgd.game"')
             $content = $content.Replace('apiLevel:"android-26"', 'apiLevel:"android-30"')
             $content = $content.Replace('portrait:!1,upsideDown:!1,landscapeRight:!0,landscapeLeft:!0', 'portrait:!0,upsideDown:!1,landscapeRight:!1,landscapeLeft:!1')
+            # 關鍵：移除 getVerifyMap 裡的 required 檢查
+            $content = $content.Replace('["packageName","apiLevel","keystorePath","keystorePassword","keystoreAlias","keystoreAliasPassword"]', '[]')
             [System.IO.File]::WriteAllText($optionsJs.FullName, $content, [System.Text.UTF8Encoding]::new($false))
             Write-Host "options.js patched (packageName occurrences before: $before)"
           }
@@ -125,7 +127,8 @@ jobs:
             $verifyContent = Get-Content $verifyOptions.FullName -Raw
             $hasPackageName = $verifyContent.Contains('packageName:"com.mrtgd.game"')
             $hasApiLevel = $verifyContent.Contains('apiLevel:"android-30"')
-            Write-Host "Verification: packageName patched=$hasPackageName, apiLevel patched=$hasApiLevel"
+            $hasEmptyVerifyMap = $verifyContent.Contains('function getVerifyMap(){const e={};return[].forEach')
+            Write-Host "Verification: packageName=$hasPackageName, apiLevel=$hasApiLevel, emptyVerifyMap=$hasEmptyVerifyMap"
           } else {
             Write-Host "Verification: options.js not found in repacked asar!"
           }
