@@ -212,15 +212,12 @@ jobs:
           $editorDir = Split-Path $creator
           Write-Host "Project: $proj"
 
-          # 用 batch 檔處理引號，把整個 --build 當 JSON 傳入
+          # 用 cmd /c 真正等待，JSON 引號用 \" 跳脫
           $buildJson = '{"name":"MoRiTeGongDui","platform":"android","buildPath":"project://build","debug":false,"md5Cache":false,"sourceMaps":false,"outputName":"MoRiTeGongDui","mainBundleCompressionType":"merge_dep","useSplashScreen":true,"packAutoAtlas":true,"polyfills":{"asyncFunctions":false},"packages":{"android":{"packageName":"com.mrtgd.game","apiLevel":"android-30","appABIs":["arm64-v8a"],"useDebugKeystore":true,"orientation":{"portrait":true,"upsideDown":false,"landscapeRight":false,"landscapeLeft":false}},"native":{"encrypted":false,"xxteaKey":"","compressZip":false,"JobSystem":"none"}}}'
-          $batchContent = "@echo off`r`n`"$creator`" --project `"$proj`" --build `"$buildJson`" --logDest `"$log`" --no-sandbox`r`necho EXITCODE:%ERRORLEVEL%`r`n"
-          $batchFile = Join-Path $workspace "run_build.bat"
-          [System.IO.File]::WriteAllText($batchFile, $batchContent, [System.Text.ASCIIEncoding]::new())
-          Write-Host "Batch file content:"
-          Get-Content $batchFile
-          Write-Host "Running batch file..."
-          & cmd /c $batchFile
+          $escapedJson = $buildJson -replace '"', '\"'
+          $cmdLine = "`"$creator`" --project `"$proj`" --build `"$escapedJson`" --logDest `"$log`" --no-sandbox"
+          Write-Host "Running: $cmdLine"
+          & cmd /c $cmdLine
           Write-Host "Exit code: $LASTEXITCODE"
 
           Write-Host "---- build.log ----"
