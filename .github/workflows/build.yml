@@ -160,17 +160,47 @@ jobs:
           $editorDir = Split-Path $creator
           Write-Host "Project: $proj"
 
-          # 啟動 Cocos，然後 Wait-Process 等所有 CocosCreator 程序結束
+          # 啟動 Cocos，然後輪詢 build.log 或 APK
           $buildArgs = "platform=android;debug=false;outputName=MoRiTeGongDui;buildPath=project://build"
           Write-Host "Build args: $buildArgs"
           $p = Start-Process -FilePath $creator -ArgumentList @("--project", $proj, "--build", $buildArgs, "--logDest", $log, "--no-sandbox") -PassThru
           Write-Host "Started PID: $($p.Id)"
-          Start-Sleep -Seconds 10
-          Write-Host "Waiting for all CocosCreator processes to exit..."
-          Wait-Process -Name "CocosCreator" -Timeout 900 -ErrorAction SilentlyContinue
-          Write-Host "All CocosCreator processes exited"
+          Start-Sleep -Seconds 15
+          Write-Host "Running processes:"
+          Get-Process | Where-Object { $_.ProcessName -match "Cocos|node|electron" } | Format-Table Id, ProcessName, StartTime -AutoSize
+
+          # 輪詢 build.log 或 APK
+          $timeout = 900
+          $elapsed = 0
+          $found = $false
+          while ($elapsed -lt $timeout -and -not $found) {
+            Start-Sleep -Seconds 15
+            $elapsed += 15
+            if (Test-Path $log) {
+              $size = (Get-Item $log).Length
+              $tail = Get-Content $log -Tail 3
+              Write-Host "[$elapsed`s] build.log size: $size, last: $($tail[-1])"
+              if ($tail -match "Build finish|Build failed|error|Error|TypeError") {
+                $found = $true
+                Write-Host "Build appears finished"
+              }
+            }
+            $apk = Get-ChildItem -Recurse -Filter *.apk project -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($apk) {
+              Write-Host "APK found: $($apk.FullName)"
+              $found = $true
+            }
+            $procs = Get-Process | Where-Object { $_.ProcessName -match "Cocos" }
+            if (-not $procs -and $elapsed -gt 30) {
+              Write-Host "No Cocos processes running after $elapsed`s"
+              $found = $true
+            }
+          }
+
           Write-Host "---- build.log ----"
           if (Test-Path $log) { Get-Content $log -Tail 300 } else { Write-Host "(no build.log)" }
+          Write-Host "---- All files in project/build ----"
+          if (Test-Path "project\build") { Get-ChildItem -Recurse "project\build" | Select-Object FullName, Length | Format-Table -AutoSize } else { Write-Host "(no build dir)" }
 
       - name: Locate APK
         id: apk
