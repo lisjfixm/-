@@ -108,8 +108,21 @@ jobs:
             $content = Get-Content $indexJs.FullName -Raw
             $before = ($content | Select-String -Pattern 'verifyRules:\["required"\]' -AllMatches).Matches.Count
             $content = $content.Replace('verifyRules:["required"]', 'verifyRules:[]')
+            # 更徹底：直接從 Object.assign 中移除 packageName 和 apiLevel
+            $content = $content.Replace('Object.assign(optionConfig,{packageName:{default:options_1.defaultOptions.packageName,verifyRules:[]},apiLevel:{default:options_1.defaultOptions.apiLevel,verifyRules:[]}})', 'optionConfig')
             [System.IO.File]::WriteAllText($indexJs.FullName, $content, [System.Text.UTF8Encoding]::new($false))
             Write-Host "index.js patched (verifyRules occurrences before: $before)"
+          }
+
+          # Patch hooks.js: 在 onAfterInit 中注入 packageName/apiLevel 預設值
+          $hooksJs = $androidFiles | Where-Object { $_.Name -eq "hooks.js" } | Select-Object -First 1
+          if ($hooksJs) {
+            Write-Host "Patching hooks.js: $($hooksJs.FullName)"
+            $content = Get-Content $hooksJs.FullName -Raw
+            # 在 generateOptions 函數開頭注入預設值
+            $content = $content.Replace('const k=e.packages.android;', 'const k=e.packages.android;if(!k.packageName){k.packageName="com.mrtgd.game"}if(!k.apiLevel){k.apiLevel="android-30"}if(!k.appABIs||k.appABIs.length===0){k.appABIs=["arm64-v8a"]}if(k.useDebugKeystore===undefined){k.useDebugKeystore=true}')
+            [System.IO.File]::WriteAllText($hooksJs.FullName, $content, [System.Text.UTF8Encoding]::new($false))
+            Write-Host "hooks.js patched"
           }
 
           # Repack
@@ -212,10 +225,10 @@ jobs:
           $editorDir = Split-Path $creator
           Write-Host "Project: $proj"
 
-          # 不包外層引號，直接傳 packages={...}
-          $buildArgs = 'platform=android;debug=false;outputName=MoRiTeGongDui;buildPath=project://build;packages={android:{packageName:com.mrtgd.game,apiLevel:android-30,appABIs:[arm64-v8a],useDebugKeystore:true}}'
+          # 簡單分號格式，patch 已移除 required 檢查並注入預設值
+          $buildArgs = "platform=android;debug=false;outputName=MoRiTeGongDui;buildPath=project://build"
           Write-Host "Build args: $buildArgs"
-          & cmd /c "`"$creator`" --project `"$proj`" --build $buildArgs --logDest `"$log`" --no-sandbox"
+          & cmd /c "`"$creator`" --project `"$proj`" --build `"$buildArgs`" --logDest `"$log`" --no-sandbox"
           Write-Host "Exit code: $LASTEXITCODE"
 
           Write-Host "---- build.log ----"
