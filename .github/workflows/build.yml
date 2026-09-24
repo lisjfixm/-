@@ -75,42 +75,60 @@ jobs:
           $asarPath = Get-ChildItem -Recurse -Filter "app.asar" cocos | Select-Object -First 1
           if (-not $asarPath) { Write-Host "No app.asar found, skipping patch"; exit 0 }
           Write-Host "Found app.asar: $($asarPath.FullName)"
+          Write-Host "Original size: $($asarPath.Length)"
 
           npm install -g asar 2>&1 | Out-Null
           $asarDir = Join-Path $env:RUNNER_TEMP "app-extracted"
           if (Test-Path $asarDir) { Remove-Item -Recurse -Force $asarDir }
           asar extract $asarPath.FullName $asarDir
+          Write-Host "Extracted to $asarDir"
 
-          $optionsJs = Get-ChildItem -Recurse -Filter "options.js" $asarDir | Where-Object { $_.FullName -match "android.*builder" } | Select-Object -First 1
+          # 檢查所有包含 android builder 的檔案
+          $androidFiles = Get-ChildItem -Recurse -Filter "*.js" $asarDir | Where-Object { $_.FullName -match "android.*builder" }
+          Write-Host "Android builder files: $($androidFiles.Count)"
+          foreach ($f in $androidFiles) { Write-Host "  $($f.FullName)" }
+
+          $optionsJs = $androidFiles | Where-Object { $_.Name -eq "options.js" } | Select-Object -First 1
           if ($optionsJs) {
-            Write-Host "Patching: $($optionsJs.FullName)"
+            Write-Host "Patching options.js: $($optionsJs.FullName)"
             $content = Get-Content $optionsJs.FullName -Raw
-            # 設定預設值
+            $before = ($content | Select-String -Pattern 'packageName:""' -AllMatches).Matches.Count
             $content = $content.Replace('packageName:""', 'packageName:"com.mrtgd.game"')
             $content = $content.Replace('apiLevel:"android-26"', 'apiLevel:"android-30"')
-            $content = $content.Replace('portrait:!1', 'portrait:!0')
-            $content = $content.Replace('landscapeRight:!0', 'landscapeRight:!1')
-            $content = $content.Replace('landscapeLeft:!0', 'landscapeLeft:!1')
+            $content = $content.Replace('portrait:!1,upsideDown:!1,landscapeRight:!0,landscapeLeft:!0', 'portrait:!0,upsideDown:!1,landscapeRight:!1,landscapeLeft:!1')
             [System.IO.File]::WriteAllText($optionsJs.FullName, $content, [System.Text.UTF8Encoding]::new($false))
-            Write-Host "Patched options.js"
-          } else {
-            Write-Host "Android options.js not found"
+            Write-Host "options.js patched (packageName occurrences before: $before)"
           }
 
-          # 同時修改 index.js 移除 required 檢查
-          $indexJs = Get-ChildItem -Recurse -Filter "index.js" $asarDir | Where-Object { $_.FullName -match "android.*builder" } | Select-Object -First 1
+          $indexJs = $androidFiles | Where-Object { $_.Name -eq "index.js" } | Select-Object -First 1
           if ($indexJs) {
-            Write-Host "Patching: $($indexJs.FullName)"
+            Write-Host "Patching index.js: $($indexJs.FullName)"
             $content = Get-Content $indexJs.FullName -Raw
+            $before = ($content | Select-String -Pattern 'verifyRules:\["required"\]' -AllMatches).Matches.Count
             $content = $content.Replace('verifyRules:["required"]', 'verifyRules:[]')
             [System.IO.File]::WriteAllText($indexJs.FullName, $content, [System.Text.UTF8Encoding]::new($false))
-            Write-Host "Patched index.js (removed required checks)"
-          } else {
-            Write-Host "Android index.js not found"
+            Write-Host "index.js patched (verifyRules occurrences before: $before)"
           }
 
+          # Repack
+          Remove-Item $asarPath.FullName -Force
           asar pack $asarDir $asarPath.FullName
-          Write-Host "Repacked app.asar"
+          $newSize = (Get-Item $asarPath.FullName).Length
+          Write-Host "Repacked app.asar, new size: $newSize"
+
+          # 驗證：重新解壓檢查
+          $verifyDir = Join-Path $env:RUNNER_TEMP "app-verify"
+          if (Test-Path $verifyDir) { Remove-Item -Recurse -Force $verifyDir }
+          asar extract $asarPath.FullName $verifyDir
+          $verifyOptions = Get-ChildItem -Recurse -Filter "options.js" $verifyDir | Where-Object { $_.FullName -match "android.*builder" } | Select-Object -First 1
+          if ($verifyOptions) {
+            $verifyContent = Get-Content $verifyOptions.FullName -Raw
+            $hasPackageName = $verifyContent.Contains('packageName:"com.mrtgd.game"')
+            $hasApiLevel = $verifyContent.Contains('apiLevel:"android-30"')
+            Write-Host "Verification: packageName patched=$hasPackageName, apiLevel patched=$hasApiLevel"
+          } else {
+            Write-Host "Verification: options.js not found in repacked asar!"
+          }
 
       - name: Configure Cocos preferences
         shell: pwsh
@@ -191,9 +209,8 @@ jobs:
           $editorDir = Split-Path $creator
           Write-Host "Project: $proj"
 
-          # 用無引號 JS 物件格式傳 packages
-          $packages = "{android:{packageName:com.mrtgd.game,apiLevel:android-30,appABIs:[arm64-v8a],useDebugKeystore:true}}"
-          $buildArgs = "platform=android;debug=false;outputName=MoRiTeGongDui;packages=$packages"
+          # 依賴 patch 後的 Android builder 預設值
+          $buildArgs = "platform=android;debug=false;outputName=MoRiTeGongDui"
           Write-Host "Build args: $buildArgs"
 
           Push-Location $editorDir
