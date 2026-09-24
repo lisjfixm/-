@@ -160,62 +160,59 @@ jobs:
           $editorDir = Split-Path $creator
           Write-Host "Project: $proj"
 
-          # 啟動 Cocos build（不用 -Wait，會掛住）
-          $buildArgs = "platform=android;debug=false;outputName=MoRiTeGongDui;buildPath=project://build"
-          Write-Host "Build args: $buildArgs"
+          # 把 project 複製到簡單路徑，避免 D:\a\-\-\ 造成問題
+          $simpleProj = "D:\cocos_project"
+          if (Test-Path $simpleProj) { Remove-Item -Recurse -Force $simpleProj }
+          Copy-Item -Recurse $proj $simpleProj
+          Write-Host "Copied project to $simpleProj"
+
+          # 啟動 Cocos build，用最簡單的參數
+          Write-Host "Starting Cocos build..."
           Push-Location $editorDir
-          $p = Start-Process -FilePath $creator -ArgumentList @("--project", $proj, "--build", $buildArgs, "--logDest", $log, "--no-sandbox", "--disable-gpu", "--disable-software-rasterizer", "--disable-dev-shm-usage", "--in-process-gpu") -PassThru
+          $p = Start-Process -FilePath $creator -ArgumentList @("--project", $simpleProj, "--build", "platform=android;debug=false", "--no-sandbox", "--disable-gpu", "--disable-software-rasterizer", "--disable-dev-shm-usage", "--in-process-gpu") -PassThru
           Pop-Location
           Write-Host "Started PID: $($p.Id)"
-          Start-Sleep -Seconds 20
-          Write-Host "Running processes after 20s:"
+          Start-Sleep -Seconds 30
+          Write-Host "Running processes after 30s:"
           Get-Process | Where-Object { $_.ProcessName -match "Cocos|node|electron" } | Format-Table Id, ProcessName, StartTime -AutoSize
 
-          # 輪詢 build.log 或 APK，最長 60 分鐘
+          # 輪詢 APK 或 build 目錄，最長 60 分鐘
           $timeout = 3600
           $elapsed = 0
           $found = $false
-          $lastLogSize = 0
-          $stableCount = 0
           while ($elapsed -lt $timeout -and -not $found) {
             Start-Sleep -Seconds 30
             $elapsed += 30
-            if (Test-Path $log) {
-              $size = (Get-Item $log).Length
-              $tail = Get-Content $log -Tail 3
-              $lastLine = if ($tail.Count -gt 0) { $tail[-1] } else { "(empty)" }
-              Write-Host "[$elapsed`s] build.log size: $size, last: $lastLine"
-              if ($tail -match "Build finish|Build failed|Build failed|error|Error|TypeError|BUILD SUCCESSFUL|BUILD FAILED") {
-                $found = $true
-                Write-Host "Build appears finished"
-              }
-              if ($size -eq $lastLogSize -and $size -gt 0) {
-                $stableCount++
-                if ($stableCount -ge 10) {
-                  Write-Host "build.log stable for 5 min, build likely finished"
-                  $found = $true
-                }
-              } else {
-                $stableCount = 0
-                $lastLogSize = $size
-              }
-            }
-            $apk = Get-ChildItem -Recurse -Filter *.apk project -ErrorAction SilentlyContinue | Select-Object -First 1
+            $apk = Get-ChildItem -Recurse -Filter *.apk $simpleProj -ErrorAction SilentlyContinue | Select-Object -First 1
             if ($apk) {
-              Write-Host "APK found: $($apk.FullName)"
+              Write-Host "[$elapsed`s] APK found: $($apk.FullName)"
               $found = $true
+            }
+            $buildDir = Join-Path $simpleProj "build"
+            if (Test-Path $buildDir) {
+              $files = Get-ChildItem -Recurse $buildDir -ErrorAction SilentlyContinue
+              Write-Host "[$elapsed`s] build dir has $($files.Count) files"
+              if ($files.Count -gt 0) {
+                $latest = $files | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+                Write-Host "  Latest: $($latest.FullName) ($($latest.Length) bytes)"
+              }
             }
             $procs = Get-Process | Where-Object { $_.ProcessName -match "Cocos" }
             if (-not $procs -and $elapsed -gt 120) {
-              Write-Host "No Cocos processes running after $elapsed`s"
+              Write-Host "[$elapsed`s] No Cocos processes running"
               $found = $true
             }
           }
 
-          Write-Host "---- build.log ----"
-          if (Test-Path $log) { Get-Content $log -Tail 300 } else { Write-Host "(no build.log)" }
-          Write-Host "---- All files in project/build ----"
-          if (Test-Path "project\build") { Get-ChildItem -Recurse "project\build" | Select-Object FullName, Length | Format-Table -AutoSize } else { Write-Host "(no build dir)" }
+          Write-Host "---- build directory ----"
+          if (Test-Path $buildDir) { Get-ChildItem -Recurse $buildDir | Select-Object FullName, Length | Format-Table -AutoSize } else { Write-Host "(no build dir)" }
+          Write-Host "---- Cocos log files ----"
+          Get-ChildItem -Recurse -Filter "*.log" "$env:APPDATA\CocosCreator" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 5 | ForEach-Object { Write-Host $_.FullName; Get-Content $_.FullName -Tail 50 }
+
+          # 把 build 結果複製回 workspace
+          if (Test-Path $buildDir) {
+            Copy-Item -Recurse $buildDir "project\build" -Force
+          }
 
           # 清理剩餘的 Cocos 程序
           Get-Process | Where-Object { $_.ProcessName -match "Cocos" } | Stop-Process -Force -ErrorAction SilentlyContinue
