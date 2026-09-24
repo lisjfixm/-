@@ -104,15 +104,11 @@ jobs:
             Write-Host "index.js patched"
           }
 
-          # Repack with --unpack to ensure android builder files are unpacked
-          $resourcesDir = Split-Path $asarPath.FullName
-          $unpackedDir = Join-Path $resourcesDir "app.asar.unpacked"
-          if (Test-Path $unpackedDir) { Remove-Item -Recurse -Force $unpackedDir }
+          # Repack
           Remove-Item $asarPath.FullName -Force
-          asar pack $asarDir $asarPath.FullName --unpack "platforms/extensions/android/**"
+          asar pack $asarDir $asarPath.FullName
           $newSize = (Get-Item $asarPath.FullName).Length
           Write-Host "Repacked app.asar, new size: $newSize"
-          Write-Host "Unpacked dir exists: $(Test-Path $unpackedDir)"
 
           # 驗證
           $optContent = Get-Content $optionsJs -Raw
