@@ -193,9 +193,8 @@ jobs:
           $editorDir = Split-Path $creator
           Write-Host "Project: $proj"
 
-          # 用 System.Diagnostics.Process，內部引號用 \" 跳脫
-          $packagesJson = '{\"android\":{\"packageName\":\"com.mrtgd.game\",\"apiLevel\":\"android-30\",\"appABIs\":[\"arm64-v8a\"],\"useDebugKeystore\":true}}'
-          $buildArgs = "platform=android;debug=false;outputName=MoRiTeGongDui;buildPath=project://build;packages=$packagesJson"
+          # 簡單分號格式，patch 已設定預設值並移除 required 檢查
+          $buildArgs = "platform=android;debug=false;outputName=MoRiTeGongDui;buildPath=project://build"
           Write-Host "Build args: $buildArgs"
           $psi = New-Object System.Diagnostics.ProcessStartInfo
           $psi.FileName = $creator
