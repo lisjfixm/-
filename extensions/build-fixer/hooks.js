@@ -17,17 +17,27 @@ const ANDROID_OPTIONS = {
     }
 };
 
-exports.onBeforeBuild = async function (options, result) {
-    console.log('[build-fixer] onBeforeBuild called, platform:', options && options.platform);
-    if (options && options.platform === 'android') {
+function inject(options) {
+    if (!options) return;
+    if (options.platform === 'android') {
         options.packages = options.packages || {};
         options.packages.android = Object.assign(
             {},
             ANDROID_OPTIONS,
             options.packages.android || {}
         );
-        console.log('[build-fixer] Injected Android options:', JSON.stringify(options.packages.android));
+        console.log('[build-fixer] Injected Android options');
     }
+}
+
+exports.onBeforeBuild = async function (options, result) {
+    console.log('[build-fixer] onBeforeBuild, platform:', options && options.platform);
+    inject(options);
+};
+
+exports.onAfterInit = async function (options, result) {
+    console.log('[build-fixer] onAfterInit, platform:', options && options.platform);
+    inject(options);
 };
 
 exports.load = function () {

@@ -1,8 +1,7 @@
 'use strict';
 
 exports.configs = {
-    '*': {
-        hooks: './hooks',
-        doc: ''
+    android: {
+        hooks: './hooks'
     }
 };
