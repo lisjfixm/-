@@ -212,24 +212,18 @@ jobs:
           $editorDir = Split-Path $creator
           Write-Host "Project: $proj"
 
-          # 用 System.Diagnostics.Process 精確控制引號
-          $packagesJson = '{"android":{"packageName":"com.mrtgd.game","apiLevel":"android-30","appABIs":["arm64-v8a"],"useDebugKeystore":true}}'
+          # 用 System.Diagnostics.Process，內部引號用 \" 跳脫
+          $packagesJson = '{\"android\":{\"packageName\":\"com.mrtgd.game\",\"apiLevel\":\"android-30\",\"appABIs\":[\"arm64-v8a\"],\"useDebugKeystore\":true}}'
           $buildArgs = "platform=android;debug=false;outputName=MoRiTeGongDui;buildPath=project://build;packages=$packagesJson"
           Write-Host "Build args: $buildArgs"
           $psi = New-Object System.Diagnostics.ProcessStartInfo
           $psi.FileName = $creator
           $psi.Arguments = "--project `"$proj`" --build `"$buildArgs`" --logDest `"$log`" --no-sandbox"
           $psi.UseShellExecute = $false
-          $psi.RedirectStandardOutput = $true
-          $psi.RedirectStandardError = $true
           Write-Host "Arguments: $($psi.Arguments)"
           $p = [System.Diagnostics.Process]::Start($psi)
           $p.WaitForExit()
           Write-Host "Exit code: $($p.ExitCode)"
-          $stdout = $p.StandardOutput.ReadToEnd()
-          $stderr = $p.StandardError.ReadToEnd()
-          if ($stdout) { Write-Host "STDOUT: $stdout" }
-          if ($stderr) { Write-Host "STDERR: $stderr" }
 
           Write-Host "---- build.log ----"
           if (Test-Path $log) { Get-Content $log -Tail 300 } else { Write-Host "(no build.log)" }
