@@ -138,31 +138,16 @@ jobs:
           $editorDir = Split-Path $creator
           Write-Host "Project: $proj"
 
-          # packages 是序列化 JSON 字串（官方文件規定）
-          $pkgs = '{"android":{"packageName":"com.mrtgd.game","apiLevel":"android-30","appABIs":["arm64-v8a"],"useDebugKeystore":true,"orientation":{"portrait":true,"landscapeRight":false,"landscapeLeft":false,"upsideDown":false}}}'
-          # 跳脫 JSON 引號為 \"，C 執行階段才會正確解析
-          $pkgsEscaped = $pkgs -replace '"', '\"'
-          $buildParam = "platform=android;debug=false;outputName=MoRiTeGongDui;packages=$pkgsEscaped"
-          Write-Host "Build param: $buildParam"
+          # 用點語法直接設 packages.android.*，避開 JSON 引號問題
+          $buildArgs = "platform=android;debug=false;outputName=MoRiTeGongDui;packages.android.packageName=com.mrtgd.game;packages.android.apiLevel=android-30;packages.android.appABIs=arm64-v8a;packages.android.useDebugKeystore=true"
+          Write-Host "Build args: $buildArgs"
 
-          # 用 .NET Process 直接傳參數，避開 cmd/PowerShell 引號解析
-          $psi = New-Object System.Diagnostics.ProcessStartInfo
-          $psi.FileName = $creator
-          $psi.WorkingDirectory = $editorDir
-          $psi.UseShellExecute = $false
-          $psi.RedirectStandardOutput = $true
-          $psi.RedirectStandardError = $true
-          # 參數字串直接傳給 CreateProcess，C 執行階段會正確解析 \" 為跳脫引號
-          $psi.Arguments = "--project `"$proj`" --build `"$buildParam`" --logDest `"$log`" --no-sandbox"
-          Write-Host "Arguments: $($psi.Arguments)"
-
-          $p = [System.Diagnostics.Process]::Start($psi)
-          $stdout = $p.StandardOutput.ReadToEnd()
-          $stderr = $p.StandardError.ReadToEnd()
-          $p.WaitForExit()
-          Write-Host "Exit code: $($p.ExitCode)"
-          if ($stdout) { Write-Host "---- stdout ----"; Write-Host $stdout }
-          if ($stderr) { Write-Host "---- stderr ----"; Write-Host $stderr }
+          Push-Location $editorDir
+          $cmd = "`"$creator`" --project `"$proj`" --build `"$buildArgs`" --logDest `"$log`" --no-sandbox"
+          Write-Host "Running: $cmd"
+          & cmd /c $cmd
+          Write-Host "Exit code: $LASTEXITCODE"
+          Pop-Location
 
           Write-Host "---- build.log ----"
           if (Test-Path $log) { Get-Content $log -Tail 300 } else { Write-Host "(no build.log)" }
