@@ -212,8 +212,8 @@ jobs:
           $editorDir = Split-Path $creator
           Write-Host "Project: $proj"
 
-          # 依賴 patch 後的 Android builder 預設值
-          $buildArgs = "platform=android;debug=false;outputName=MoRiTeGongDui"
+          # 試頂層參數，CLI 可能映射到 packages.android
+          $buildArgs = "platform=android;debug=false;outputName=MoRiTeGongDui;packageName=com.mrtgd.game;apiLevel=android-30;appABIs=arm64-v8a"
           Write-Host "Build args: $buildArgs"
 
           Push-Location $editorDir
