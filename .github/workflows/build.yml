@@ -68,6 +68,37 @@ jobs:
       - name: Extract Cocos Creator
         run: Expand-Archive -Path cocos.zip -DestinationPath cocos -Force
 
+      # 直接修改 Android builder 的預設值，繞過 required 檢查
+      - name: Patch Android builder defaults
+        shell: pwsh
+        run: |
+          $asarPath = Get-ChildItem -Recurse -Filter "app.asar" cocos | Select-Object -First 1
+          if (-not $asarPath) { Write-Host "No app.asar found, skipping patch"; exit 0 }
+          Write-Host "Found app.asar: $($asarPath.FullName)"
+
+          npm install -g asar 2>&1 | Out-Null
+          $asarDir = Join-Path $env:RUNNER_TEMP "app-extracted"
+          if (Test-Path $asarDir) { Remove-Item -Recurse -Force $asarDir }
+          asar extract $asarPath.FullName $asarDir
+
+          $optionsJs = Get-ChildItem -Recurse -Filter "options.js" $asarDir | Where-Object { $_.FullName -match "android.*builder" } | Select-Object -First 1
+          if ($optionsJs) {
+            Write-Host "Patching: $($optionsJs.FullName)"
+            $content = Get-Content $optionsJs.FullName -Raw
+            $content = $content -replace 'packageName:""', 'packageName:"com.mrtgd.game"'
+            $content = $content -replace 'apiLevel:"android-26"', 'apiLevel:"android-30"'
+            $content = $content -replace 'portrait:!1', 'portrait:!0'
+            $content = $content -replace 'landscapeRight:!0', 'landscapeRight:!1'
+            $content = $content -replace 'landscapeLeft:!0', 'landscapeLeft:!1'
+            [System.IO.File]::WriteAllText($optionsJs.FullName, $content, [System.Text.UTF8Encoding]::new($false))
+            Write-Host "Patched successfully"
+          } else {
+            Write-Host "Android options.js not found"
+          }
+
+          asar pack $asarDir $asarPath.FullName
+          Write-Host "Repacked app.asar"
+
       - name: Configure Cocos preferences
         shell: pwsh
         run: |
