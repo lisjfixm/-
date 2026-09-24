@@ -212,9 +212,8 @@ jobs:
           $editorDir = Split-Path $creator
           Write-Host "Project: $proj"
 
-          # 分號格式，packages 當 JSON 值，引號用 \" 跳脫
-          $packagesJson = '{\"android\":{\"packageName\":\"com.mrtgd.game\",\"apiLevel\":\"android-30\",\"appABIs\":[\"arm64-v8a\"],\"useDebugKeystore\":true,\"orientation\":{\"portrait\":true,\"landscapeRight\":false,\"landscapeLeft\":false}},\"native\":{\"encrypted\":false,\"xxteaKey\":\"\",\"compressZip\":false,\"JobSystem\":\"none\"}}'
-          $buildArgs = "platform=android;debug=false;outputName=MoRiTeGongDui;buildPath=project://build;packages=$packagesJson"
+          # 試 PHP 風格陣列語法
+          $buildArgs = "platform=android;debug=false;outputName=MoRiTeGongDui;buildPath=project://build;packages[android][packageName]=com.mrtgd.game;packages[android][apiLevel]=android-30;packages[android][appABIs]=arm64-v8a;packages[android][useDebugKeystore]=true"
           $cmdLine = "`"$creator`" --project `"$proj`" --build `"$buildArgs`" --logDest `"$log`" --no-sandbox"
           Write-Host "Running: $cmdLine"
           & cmd /c $cmdLine
