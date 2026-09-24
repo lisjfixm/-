@@ -140,7 +140,9 @@ jobs:
 
           # packages 是序列化 JSON 字串（官方文件規定）
           $pkgs = '{"android":{"packageName":"com.mrtgd.game","apiLevel":"android-30","appABIs":["arm64-v8a"],"useDebugKeystore":true,"orientation":{"portrait":true,"landscapeRight":false,"landscapeLeft":false,"upsideDown":false}}}'
-          $buildParam = "platform=android;debug=false;outputName=MoRiTeGongDui;packages=$pkgs"
+          # 跳脫 JSON 引號為 \"，C 執行階段才會正確解析
+          $pkgsEscaped = $pkgs -replace '"', '\"'
+          $buildParam = "platform=android;debug=false;outputName=MoRiTeGongDui;packages=$pkgsEscaped"
           Write-Host "Build param: $buildParam"
 
           # 用 .NET Process 直接傳參數，避開 cmd/PowerShell 引號解析
