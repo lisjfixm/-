@@ -191,8 +191,9 @@ jobs:
           $editorDir = Split-Path $creator
           Write-Host "Project: $proj"
 
-          # 擴展會自動注入 Android 設定，這裡只需要簡單參數
-          $buildArgs = "platform=android;debug=false;outputName=MoRiTeGongDui"
+          # 用單引號 JSON 傳 packages，避開雙引號 crash 問題
+          $packages = "{'android':{'packageName':'com.mrtgd.game','apiLevel':'android-30','appABIs':['arm64-v8a'],'useDebugKeystore':true,'orientation':{'portrait':true,'landscapeRight':false,'landscapeLeft':false}}}"
+          $buildArgs = "platform=android;debug=false;outputName=MoRiTeGongDui;packages=$packages"
           Write-Host "Build args: $buildArgs"
 
           Push-Location $editorDir
