@@ -1,0 +1,14 @@
+{
+  "package_version": 2,
+  "version": "1.0.0",
+  "name": "build-fixer",
+  "description": "Auto-inject Android build options",
+  "main": "./main.js",
+  "contributions": {
+    "messages": {
+      "builder:build-start": {
+        "methods": ["onBuildStart"]
+      }
+    }
+  }
+}
