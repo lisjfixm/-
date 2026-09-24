@@ -29,73 +29,14 @@ jobs:
           Write-Host "--- project root ---"
           Get-ChildItem project | Select-Object Name | Format-Table -AutoSize
 
-      # 建立 Cocos 擴展，自動注入 Android build 設定
+      # 把擴展複製到專案，自動注入 Android build 設定
       - name: Install build-fixer extension
         shell: pwsh
         run: |
-          $extDir = "project\extensions\build-fixer"
-          New-Item -ItemType Directory -Force -Path $extDir | Out-Null
-
-          $pkgJson = @'
-{
-  "package_version": 2,
-  "version": "1.0.0",
-  "name": "build-fixer",
-  "description": "Auto-inject Android build options",
-  "main": "./main.js",
-  "contributions": {
-    "messages": {
-      "builder:build-start": {
-        "methods": ["onBuildStart"]
-      }
-    }
-  }
-}
-'@
-          [System.IO.File]::WriteAllText("$extDir\package.json", $pkgJson, [System.Text.UTF8Encoding]::new($false))
-
-          $mainJs = @'
-'use strict';
-const ANDROID_OPTIONS = {
-  packageName: 'com.mrtgd.game',
-  apiLevel: 'android-30',
-  appABIs: ['arm64-v8a'],
-  useDebugKeystore: true,
-  keystorePath: '',
-  keystorePassword: '',
-  keystoreAlias: '',
-  keystoreAliasPassword: '',
-  orientation: { portrait: true, upsideDown: false, landscapeRight: false, landscapeLeft: false }
-};
-function injectOptions(options) {
-  if (!options) return;
-  if (options.platform === 'android') {
-    options.packages = options.packages || {};
-    options.packages.android = Object.assign({}, ANDROID_OPTIONS, options.packages.android || {});
-    console.log('[build-fixer] Injected Android options');
-  }
-}
-exports.methods = {
-  onBuildStart(options) {
-    console.log('[build-fixer] onBuildStart, platform:', options && options.platform);
-    injectOptions(options);
-  }
-};
-exports.load = function () {
-  console.log('[build-fixer] Extension loaded');
-  try {
-    if (Editor.Builder && Editor.Builder.on) {
-      Editor.Builder.on('build-start', injectOptions);
-      console.log('[build-fixer] Registered build-start listener');
-    }
-  } catch (e) {
-    console.log('[build-fixer] Editor.Builder.on failed:', e.message);
-  }
-};
-'@
-          [System.IO.File]::WriteAllText("$extDir\main.js", $mainJs, [System.Text.UTF8Encoding]::new($false))
-          Write-Host "Extension installed at $extDir"
-          Get-ChildItem $extDir
+          New-Item -ItemType Directory -Force -Path "project\extensions\build-fixer" | Out-Null
+          Copy-Item "extensions\build-fixer\*" "project\extensions\build-fixer\" -Recurse -Force
+          Write-Host "Extension installed:"
+          Get-ChildItem "project\extensions\build-fixer"
 
       - name: Set up JDK 11
         uses: actions/setup-java@v4
