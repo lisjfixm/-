@@ -85,15 +85,28 @@ jobs:
           if ($optionsJs) {
             Write-Host "Patching: $($optionsJs.FullName)"
             $content = Get-Content $optionsJs.FullName -Raw
-            $content = $content -replace 'packageName:""', 'packageName:"com.mrtgd.game"'
-            $content = $content -replace 'apiLevel:"android-26"', 'apiLevel:"android-30"'
-            $content = $content -replace 'portrait:!1', 'portrait:!0'
-            $content = $content -replace 'landscapeRight:!0', 'landscapeRight:!1'
-            $content = $content -replace 'landscapeLeft:!0', 'landscapeLeft:!1'
+            # 設定預設值
+            $content = $content.Replace('packageName:""', 'packageName:"com.mrtgd.game"')
+            $content = $content.Replace('apiLevel:"android-26"', 'apiLevel:"android-30"')
+            $content = $content.Replace('portrait:!1', 'portrait:!0')
+            $content = $content.Replace('landscapeRight:!0', 'landscapeRight:!1')
+            $content = $content.Replace('landscapeLeft:!0', 'landscapeLeft:!1')
             [System.IO.File]::WriteAllText($optionsJs.FullName, $content, [System.Text.UTF8Encoding]::new($false))
-            Write-Host "Patched successfully"
+            Write-Host "Patched options.js"
           } else {
             Write-Host "Android options.js not found"
+          }
+
+          # 同時修改 index.js 移除 required 檢查
+          $indexJs = Get-ChildItem -Recurse -Filter "index.js" $asarDir | Where-Object { $_.FullName -match "android.*builder" } | Select-Object -First 1
+          if ($indexJs) {
+            Write-Host "Patching: $($indexJs.FullName)"
+            $content = Get-Content $indexJs.FullName -Raw
+            $content = $content.Replace('verifyRules:["required"]', 'verifyRules:[]')
+            [System.IO.File]::WriteAllText($indexJs.FullName, $content, [System.Text.UTF8Encoding]::new($false))
+            Write-Host "Patched index.js (removed required checks)"
+          } else {
+            Write-Host "Android index.js not found"
           }
 
           asar pack $asarDir $asarPath.FullName
