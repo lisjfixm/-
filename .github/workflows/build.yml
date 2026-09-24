@@ -68,27 +68,22 @@ jobs:
       - name: Extract Cocos Creator
         run: Expand-Archive -Path cocos.zip -DestinationPath cocos -Force
 
-      # 把 app.asar 解壓成 app 目錄，直接修改（不需要 repack）
-      - name: Patch Android builder (extract asar to directory)
+      # Patch Android builder：解壓 → 修改 → repack（用 --unpack 確保檔案被解壓）
+      - name: Patch Android builder defaults
         shell: pwsh
         run: |
           $asarPath = Get-ChildItem -Recurse -Filter "app.asar" cocos | Select-Object -First 1
           if (-not $asarPath) { Write-Host "No app.asar found, skipping patch"; exit 0 }
           Write-Host "Found app.asar: $($asarPath.FullName)"
+          Write-Host "Original size: $($asarPath.Length)"
 
           npm install -g @electron/asar 2>&1 | Out-Null
-          $resourcesDir = Split-Path $asarPath.FullName
-          $appDir = Join-Path $resourcesDir "app"
+          $asarDir = Join-Path $env:RUNNER_TEMP "app-extracted"
+          if (Test-Path $asarDir) { Remove-Item -Recurse -Force $asarDir }
+          asar extract $asarPath.FullName $asarDir
+          Write-Host "Extracted to $asarDir"
 
-          if (Test-Path $appDir) { Remove-Item -Recurse -Force $appDir }
-          asar extract $asarPath.FullName $appDir
-          Write-Host "Extracted to $appDir"
-
-          Remove-Item $asarPath.FullName -Force
-          Write-Host "Removed original app.asar, Electron will read from app directory"
-
-          $androidDir = Join-Path $appDir "platforms\extensions\android\dist\builder"
-          Write-Host "Android builder dir: $androidDir"
+          $androidDir = Join-Path $asarDir "platforms\extensions\android\dist\builder"
 
           $optionsJs = Join-Path $androidDir "options.js"
           if (Test-Path $optionsJs) {
@@ -109,6 +104,17 @@ jobs:
             Write-Host "index.js patched"
           }
 
+          # Repack with --unpack to ensure android builder files are unpacked
+          $resourcesDir = Split-Path $asarPath.FullName
+          $unpackedDir = Join-Path $resourcesDir "app.asar.unpacked"
+          if (Test-Path $unpackedDir) { Remove-Item -Recurse -Force $unpackedDir }
+          Remove-Item $asarPath.FullName -Force
+          asar pack $asarDir $asarPath.FullName --unpack "platforms/extensions/android/**"
+          $newSize = (Get-Item $asarPath.FullName).Length
+          Write-Host "Repacked app.asar, new size: $newSize"
+          Write-Host "Unpacked dir exists: $(Test-Path $unpackedDir)"
+
+          # 驗證
           $optContent = Get-Content $optionsJs -Raw
           $hasPkg = $optContent.Contains('packageName:"com.mrtgd.game"')
           $hasApi = $optContent.Contains('apiLevel:"android-30"')
