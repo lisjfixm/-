@@ -160,57 +160,17 @@ jobs:
           $editorDir = Split-Path $creator
           Write-Host "Project: $proj"
 
-          # 用 Start-Process 非同步啟動，然後輪詢 build.log
+          # 用 Start-Process -Wait 並重新導向 stdout/stderr
           $buildArgs = "platform=android;debug=false;outputName=MoRiTeGongDui;buildPath=project://build"
           Write-Host "Build args: $buildArgs"
-          $p = Start-Process -FilePath $creator -ArgumentList @("--project", $proj, "--build", $buildArgs, "--logDest", $log, "--no-sandbox") -PassThru -NoNewWindow
-          Write-Host "Started PID: $($p.Id)"
-
-          # 等待 build.log 出現
-          $timeout = 600
-          $elapsed = 0
-          while (-not (Test-Path $log) -and $elapsed -lt $timeout) {
-            Start-Sleep -Seconds 5
-            $elapsed += 5
-            Write-Host "Waiting for build.log... ${elapsed}s"
-          }
-
-          if (-not (Test-Path $log)) {
-            Write-Host "build.log never appeared, checking process..."
-            if ($p.HasExited) { Write-Host "Process exited with code: $($p.ExitCode)" }
-            else { Write-Host "Process still running"; $p.Kill() }
-            exit 1
-          }
-
-          # 輪詢 build.log 等待 build 完成
-          $lastSize = 0
-          $stableCount = 0
-          while ($elapsed -lt $timeout) {
-            Start-Sleep -Seconds 10
-            $elapsed += 10
-            if (Test-Path $log) {
-              $size = (Get-Item $log).Length
-              $tail = Get-Content $log -Tail 5
-              Write-Host "[$elapsed`s] log size: $size, last: $($tail[-1])"
-              if ($size -eq $lastSize) {
-                $stableCount++
-                if ($stableCount -ge 6) {
-                  Write-Host "Log stable for 60s, build likely finished"
-                  break
-                }
-              } else {
-                $stableCount = 0
-                $lastSize = $size
-              }
-            }
-            if ($p.HasExited) {
-              Write-Host "Process exited with code: $($p.ExitCode)"
-              break
-            }
-          }
-
-          Write-Host "---- build.log ----"
-          if (Test-Path $log) { Get-Content $log -Tail 300 } else { Write-Host "(no build.log)" }
+          $stdout = Join-Path $workspace "stdout.log"
+          $stderr = Join-Path $workspace "stderr.log"
+          $p = Start-Process -FilePath $creator -ArgumentList @("--project", $proj, "--build", $buildArgs, "--no-sandbox") -Wait -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          Write-Host "Exit code: $($p.ExitCode)"
+          Write-Host "---- stdout.log ----"
+          if (Test-Path $stdout) { Get-Content $stdout -Tail 200 } else { Write-Host "(no stdout)" }
+          Write-Host "---- stderr.log ----"
+          if (Test-Path $stderr) { Get-Content $stderr -Tail 200 } else { Write-Host "(no stderr)" }
 
       - name: Locate APK
         id: apk
