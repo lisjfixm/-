@@ -212,10 +212,10 @@ jobs:
           $editorDir = Split-Path $creator
           Write-Host "Project: $proj"
 
-          # 用 cmd /c 真正等待，JSON 引號用 \" 跳脫
-          $buildJson = '{"name":"MoRiTeGongDui","platform":"android","buildPath":"project://build","debug":false,"md5Cache":false,"sourceMaps":false,"outputName":"MoRiTeGongDui","mainBundleCompressionType":"merge_dep","useSplashScreen":true,"packAutoAtlas":true,"polyfills":{"asyncFunctions":false},"packages":{"android":{"packageName":"com.mrtgd.game","apiLevel":"android-30","appABIs":["arm64-v8a"],"useDebugKeystore":true,"orientation":{"portrait":true,"upsideDown":false,"landscapeRight":false,"landscapeLeft":false}},"native":{"encrypted":false,"xxteaKey":"","compressZip":false,"JobSystem":"none"}}}'
-          $escapedJson = $buildJson -replace '"', '\"'
-          $cmdLine = "`"$creator`" --project `"$proj`" --build `"$escapedJson`" --logDest `"$log`" --no-sandbox"
+          # 分號格式，packages 當 JSON 值，引號用 \" 跳脫
+          $packagesJson = '{\"android\":{\"packageName\":\"com.mrtgd.game\",\"apiLevel\":\"android-30\",\"appABIs\":[\"arm64-v8a\"],\"useDebugKeystore\":true,\"orientation\":{\"portrait\":true,\"landscapeRight\":false,\"landscapeLeft\":false}},\"native\":{\"encrypted\":false,\"xxteaKey\":\"\",\"compressZip\":false,\"JobSystem\":\"none\"}}'
+          $buildArgs = "platform=android;debug=false;outputName=MoRiTeGongDui;buildPath=project://build;packages=$packagesJson"
+          $cmdLine = "`"$creator`" --project `"$proj`" --build `"$buildArgs`" --logDest `"$log`" --no-sandbox"
           Write-Host "Running: $cmdLine"
           & cmd /c $cmdLine
           Write-Host "Exit code: $LASTEXITCODE"
