@@ -104,11 +104,19 @@ jobs:
             Write-Host "index.js patched"
           }
 
-          # Repack
+          # Repack with --unpack to unpack all platform files
+          $resourcesDir = Split-Path $asarPath.FullName
+          $unpackedDir = Join-Path $resourcesDir "app.asar.unpacked"
+          if (Test-Path $unpackedDir) { Remove-Item -Recurse -Force $unpackedDir }
           Remove-Item $asarPath.FullName -Force
-          asar pack $asarDir $asarPath.FullName
+          asar pack $asarDir $asarPath.FullName --unpack "platforms/**"
           $newSize = (Get-Item $asarPath.FullName).Length
           Write-Host "Repacked app.asar, new size: $newSize"
+          Write-Host "Unpacked dir exists: $(Test-Path $unpackedDir)"
+          if (Test-Path $unpackedDir) {
+            $unpackedFiles = (Get-ChildItem -Recurse $unpackedDir).Count
+            Write-Host "Unpacked files: $unpackedFiles"
+          }
 
           # 驗證
           $optContent = Get-Content $optionsJs -Raw
