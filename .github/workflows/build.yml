@@ -191,8 +191,8 @@ jobs:
           $editorDir = Split-Path $creator
           Write-Host "Project: $proj"
 
-          # 用單引號 JSON 傳 packages，避開雙引號 crash 問題
-          $packages = "{'android':{'packageName':'com.mrtgd.game','apiLevel':'android-30','appABIs':['arm64-v8a'],'useDebugKeystore':true,'orientation':{'portrait':true,'landscapeRight':false,'landscapeLeft':false}}}"
+          # 用無引號 JS 物件格式傳 packages
+          $packages = "{android:{packageName:com.mrtgd.game,apiLevel:android-30,appABIs:[arm64-v8a],useDebugKeystore:true}}"
           $buildArgs = "platform=android;debug=false;outputName=MoRiTeGongDui;packages=$packages"
           Write-Host "Build args: $buildArgs"
 
