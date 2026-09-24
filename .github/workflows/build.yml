@@ -213,7 +213,7 @@ jobs:
           Write-Host "Project: $proj"
 
           # 用 batch 檔處理引號，把整個 --build 當 JSON 傳入
-          $buildJson = '{"platform":"android","debug":false,"outputName":"MoRiTeGongDui","packages":{"android":{"packageName":"com.mrtgd.game","apiLevel":"android-30","appABIs":["arm64-v8a"],"useDebugKeystore":true}}}'
+          $buildJson = '{"name":"MoRiTeGongDui","platform":"android","buildPath":"project://build","debug":false,"md5Cache":false,"sourceMaps":false,"outputName":"MoRiTeGongDui","mainBundleCompressionType":"merge_dep","useSplashScreen":true,"packAutoAtlas":true,"polyfills":{"asyncFunctions":false},"packages":{"android":{"packageName":"com.mrtgd.game","apiLevel":"android-30","appABIs":["arm64-v8a"],"useDebugKeystore":true,"orientation":{"portrait":true,"upsideDown":false,"landscapeRight":false,"landscapeLeft":false}},"native":{"encrypted":false,"xxteaKey":"","compressZip":false,"JobSystem":"none"}}}'
           $batchContent = "@echo off`r`n`"$creator`" --project `"$proj`" --build `"$buildJson`" --logDest `"$log`" --no-sandbox`r`necho EXITCODE:%ERRORLEVEL%`r`n"
           $batchFile = Join-Path $workspace "run_build.bat"
           [System.IO.File]::WriteAllText($batchFile, $batchContent, [System.Text.ASCIIEncoding]::new())
