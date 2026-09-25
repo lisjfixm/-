@@ -34,38 +34,43 @@ walkDir(rootDir, (file) => {
     c = fs.readFileSync(file, "utf8");
   } catch (e) { return; }
   
-  if (!c.includes("replaceEnvVariables")) return;
+  const hasReplaceEnv = c.includes("replaceEnvVariables");
+  const isAndroid = file.includes("android") && c.includes("setOrientation");
+  
+  if (!hasReplaceEnv && !isAndroid) return;
   
   let changed = false;
   const before = c;
 
-  // 1. Patch function definition - 加入 undefined 檢查
-  c = c.replace(/(replaceEnvVariables\s*[=:]\s*function\s*\((\w+)[^)]*\)\s*\{)/, "$1if(typeof $2==='undefined'||$2===null)return '';");
-  c = c.replace(/(function\s+replaceEnvVariables\s*\((\w+)[^)]*\)\s*\{)/, "$1if(typeof $2==='undefined'||$2===null)return '';");
-  c = c.replace(/(replaceEnvVariables\s*\((\w+)[^)]*\)\s*\{)/, "$1if(typeof $2==='undefined'||$2===null)return '';");
+  if (hasReplaceEnv) {
+    // 1. Patch function definition - 加入 undefined 檢查
+    c = c.replace(/(replaceEnvVariables\s*[=:]\s*function\s*\((\w+)[^)]*\)\s*\{)/, "$1if(typeof $2==='undefined'||$2===null)return '';");
+    c = c.replace(/(function\s+replaceEnvVariables\s*\((\w+)[^)]*\)\s*\{)/, "$1if(typeof $2==='undefined'||$2===null)return '';");
+    c = c.replace(/(replaceEnvVariables\s*\((\w+)[^)]*\)\s*\{)/, "$1if(typeof $2==='undefined'||$2===null)return '';");
 
-  // 2. Patch function body - 找到函數體，把所有 xxx.replace( 改成 (xxx||'').replace(
-  const funcIdx = c.indexOf("replaceEnvVariables");
-  if (funcIdx >= 0) {
-    const braceStart = c.indexOf("{", funcIdx);
-    if (braceStart >= 0) {
-      let depth = 0;
-      let braceEnd = braceStart;
-      for (let i = braceStart; i < c.length; i++) {
-        if (c[i] === '{') depth++;
-        else if (c[i] === '}') { depth--; if (depth === 0) { braceEnd = i; break; } }
+    // 2. Patch function body - 找到函數體，把所有 xxx.replace( 改成 (xxx||'').replace(
+    const funcIdx = c.indexOf("replaceEnvVariables");
+    if (funcIdx >= 0) {
+      const braceStart = c.indexOf("{", funcIdx);
+      if (braceStart >= 0) {
+        let depth = 0;
+        let braceEnd = braceStart;
+        for (let i = braceStart; i < c.length; i++) {
+          if (c[i] === '{') depth++;
+          else if (c[i] === '}') { depth--; if (depth === 0) { braceEnd = i; break; } }
+        }
+        const funcBody = c.substring(braceStart, braceEnd + 1);
+        const patchedBody = funcBody.replace(/([a-zA-Z_$][a-zA-Z0-9_$]*)\.replace\(/g, "($1||'').replace(");
+        c = c.substring(0, braceStart) + patchedBody + c.substring(braceEnd + 1);
       }
-      const funcBody = c.substring(braceStart, braceEnd + 1);
-      const patchedBody = funcBody.replace(/([a-zA-Z_$][a-zA-Z0-9_$]*)\.replace\(/g, "($1||'').replace(");
-      c = c.substring(0, braceStart) + patchedBody + c.substring(braceEnd + 1);
     }
+
+    // 3. Patch call sites - xxx.replaceEnvVariables(arg) -> xxx.replaceEnvVariables(arg||'')
+    c = c.replace(/(\.replaceEnvVariables)\(([^)]+)\)/g, "$1($2||'')");
   }
 
-  // 3. Patch call sites - xxx.replaceEnvVariables(arg) -> xxx.replaceEnvVariables(arg||'')
-  c = c.replace(/(\.replaceEnvVariables)\(([^)]+)\)/g, "$1($2||'')");
-
   // 4. Patch setOrientation and orientation access (only in android files)
-  if (file.includes("android") && c.includes("setOrientation")) {
+  if (isAndroid) {
     c = c.replace(/(setOrientation\s*\((\w+)[^)]*\)\s*\{)/, "$1$2=$2||{landscapeRight:true,landscapeLeft:true,portrait:false,upsideDown:false};");
     c = c.replace(/(\w+)\.landscapeRight/g, "($1||{}).landscapeRight");
     c = c.replace(/(\w+)\.landscapeLeft/g, "($1||{}).landscapeLeft");
