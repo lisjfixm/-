@@ -29,11 +29,21 @@ walkDir(nptDir, (file) => {
   // Patch replaceEnvVariables
   if (c.includes("replaceEnvVariables")) {
     const before = c;
+    // 匹配多種函數定義方式：function declaration, function expression, class method, arrow function
     c = c.replace(/(replaceEnvVariables\s*[=:]\s*function\s*\((\w+)[^)]*\)\s*\{)/, "$1if(typeof $2==='undefined'||$2===null)return '';");
     c = c.replace(/(function\s+replaceEnvVariables\s*\((\w+)[^)]*\)\s*\{)/, "$1if(typeof $2==='undefined'||$2===null)return '';");
+    c = c.replace(/(replaceEnvVariables\s*\((\w+)[^)]*\)\s*\{)/, "$1if(typeof $2==='undefined'||$2===null)return '';");
+    c = c.replace(/(replaceEnvVariables\s*[=:]\s*\((\w+)[^)]*\)\s*=>\s*\{)/, "$1if(typeof $2==='undefined'||$2===null)return '';");
     if (c !== before) {
       changed = true;
       console.log("Patched replaceEnvVariables in " + file);
+    } else {
+      console.log("WARNING: replaceEnvVariables found but regex did not match in " + file);
+      // 嘗試找到函數定義位置並輸出上下文
+      const idx = c.indexOf("replaceEnvVariables");
+      if (idx >= 0) {
+        console.log("Context: " + c.substring(Math.max(0, idx-50), idx+100));
+      }
     }
   }
 
