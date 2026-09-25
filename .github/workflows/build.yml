@@ -118,6 +118,14 @@ jobs:
             Write-Host "hooks.js patched (SDK/NDK from env)"
           }
 
+          # 關鍵：把 .js 檔複製到 modules/platform-extensions 目錄，覆蓋 .ccc
+          $srcBuilder = Join-Path $asarDir "platforms\extensions\android\dist\builder"
+          $dstBuilder = Join-Path $asarDir "modules\platform-extensions\extensions\android\dist\builder"
+          if (Test-Path $dstBuilder) {
+            Copy-Item (Join-Path $srcBuilder "*.js") $dstBuilder -Force
+            Write-Host "Copied .js files to modules/platform-extensions"
+          }
+
           # Repack
           Remove-Item $asarPath.FullName -Force
           asar pack $asarDir $asarPath.FullName
@@ -135,7 +143,9 @@ jobs:
           $verifyHooks = Join-Path $verifyDir "platforms\extensions\android\dist\builder\hooks.js"
           $verifyHooksContent = Get-Content $verifyHooks -Raw
           $hasEnvSdk = $verifyHooksContent.Contains('process.env.ANDROID_HOME')
-          Write-Host "Verification: packageName=$hasPkg, apiLevel=$hasApi, envSdk=$hasEnvSdk"
+          $modHooks = Join-Path $verifyDir "modules\platform-extensions\extensions\android\dist\builder\hooks.js"
+          $hasModJs = Test-Path $modHooks
+          Write-Host "Verification: packageName=$hasPkg, apiLevel=$hasApi, envSdk=$hasEnvSdk, modJs=$hasModJs"
 
       - name: Configure Cocos preferences
         shell: pwsh
