@@ -5,10 +5,6 @@ const ANDROID_OPTIONS = {
     apiLevel: 'android-30',
     appABIs: ['arm64-v8a'],
     useDebugKeystore: true,
-    keystorePath: '',
-    keystorePassword: '',
-    keystoreAlias: '',
-    keystoreAliasPassword: '',
     orientation: {
         portrait: true,
         upsideDown: false,
@@ -26,9 +22,21 @@ function inject(options) {
             ANDROID_OPTIONS,
             options.packages.android || {}
         );
-        console.log('[build-fixer] Injected Android options');
+        console.log('[build-fixer] Injected Android options:', JSON.stringify(options.packages.android));
     }
 }
+
+exports.load = function () {
+    console.log('[build-fixer] hooks loaded');
+    // 嘗試 monkey-patch checkOptions
+    try {
+        const Module = require('module');
+        const originalCcc = Module._extensions['.ccc'];
+        console.log('[build-fixer] Original ccc handler:', typeof originalCcc);
+    } catch (e) {
+        console.log('[build-fixer] Error patching:', e.message);
+    }
+};
 
 exports.onBeforeBuild = async function (options, result) {
     console.log('[build-fixer] onBeforeBuild, platform:', options && options.platform);
@@ -38,10 +46,6 @@ exports.onBeforeBuild = async function (options, result) {
 exports.onAfterInit = async function (options, result) {
     console.log('[build-fixer] onAfterInit, platform:', options && options.platform);
     inject(options);
-};
-
-exports.load = function () {
-    console.log('[build-fixer] hooks loaded');
 };
 
 exports.unload = function () {
