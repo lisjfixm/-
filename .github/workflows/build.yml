@@ -114,45 +114,60 @@ jobs:
 
           $webBuild = Join-Path $simpleProj "build\web-mobile"
           if (Test-Path $webBuild) {
-            Write-Host "Web build output:"
-            Get-ChildItem $webBuild | Select-Object Name, Length | Format-Table -AutoSize
+            Write-Host "Web build output exists, copying to workspace..."
+            if (Test-Path "web-output") { Remove-Item -Recurse -Force "web-output" }
             Copy-Item -Recurse $webBuild "web-output" -Force
+            Write-Host "Copied. web-output contents:"
+            Get-ChildItem "web-output" | Select-Object Name, Length | Format-Table -AutoSize
           } else {
-            Write-Host "WARNING: web-mobile build dir not found, listing build dir:"
-            Get-ChildItem (Join-Path $simpleProj "build") -Recurse -ErrorAction SilentlyContinue | Select-Object FullName | Format-Table -AutoSize
+            Write-Host "WARNING: web-mobile build dir not found at $webBuild"
+            Write-Host "Listing D:\cocos_project\build :"
+            Get-ChildItem "D:\cocos_project\build" -ErrorAction SilentlyContinue | Select-Object Name | Format-Table -AutoSize
           }
 
       - name: Assemble Android project
         shell: pwsh
         run: |
           # 複製 Android 模板
+          if (Test-Path "android-app") { Remove-Item -Recurse -Force "android-app" }
           Copy-Item -Recurse "android-template" "android-app" -Force
 
           # 把 web build 放到 assets/public
           $assetsDir = "android-app\app\src\main\assets\public"
           New-Item -ItemType Directory -Force -Path $assetsDir | Out-Null
+
+          # 優先用 web-output，否則直接從 D:\cocos_project 複製
+          $webSource = $null
           if (Test-Path "web-output") {
-            Copy-Item -Recurse "web-output\*" $assetsDir -Force
-            Write-Host "Web files copied to assets:"
+            $webSource = "web-output"
+          } elseif (Test-Path "D:\cocos_project\build\web-mobile") {
+            $webSource = "D:\cocos_project\build\web-mobile"
+          }
+
+          if ($webSource) {
+            Write-Host "Copying web files from $webSource"
+            Copy-Item -Recurse "$webSource\*" $assetsDir -Force
+            Write-Host "Assets contents:"
             Get-ChildItem $assetsDir | Select-Object Name | Format-Table -AutoSize
           } else {
-            Write-Host "ERROR: web-output not found!"
+            Write-Host "ERROR: No web build source found!"
+            Write-Host "web-output exists: $(Test-Path 'web-output')"
+            Write-Host "D:\cocos_project\build\web-mobile exists: $(Test-Path 'D:\cocos_project\build\web-mobile')"
             exit 1
           }
 
           # 下載 gradle wrapper jar
           $wrapperJar = "android-app\gradle\wrapper\gradle-wrapper.jar"
-          $wrapperUrl = "https://raw.githubusercontent.com/gradle/gradle/v7.3.3/gradle/wrapper/gradle-wrapper.jar"
-          try {
-            Invoke-WebRequest -Uri $wrapperUrl -OutFile $wrapperJar -UseBasicParsing -TimeoutSec 60
-            Write-Host "Gradle wrapper jar downloaded"
-          } catch {
-            Write-Host "Failed to download wrapper jar: $($_.Exception.Message)"
+          if (-not (Test-Path $wrapperJar)) {
+            $wrapperUrl = "https://raw.githubusercontent.com/gradle/gradle/v7.3.3/gradle/wrapper/gradle-wrapper.jar"
+            try {
+              Invoke-WebRequest -Uri $wrapperUrl -OutFile $wrapperJar -UseBasicParsing -TimeoutSec 60
+              Write-Host "Gradle wrapper jar downloaded"
+            } catch {
+              Write-Host "Failed to download wrapper jar: $($_.Exception.Message)"
+            }
           }
 
-          # gradlew.bat
-          $gradlew = "@echo off`r`nset DIRNAME=%~dp0`r`nif `"%DIRNAME%`"==`"\" set DIRNAME=.`r`nset APP_HOME=%DIRNAME%`r`nset CLASSPATH=%APP_HOME%\gradle\wrapper\gradle-wrapper.jar`r`n`"%JAVA_HOME%\bin\java.exe`" %GRADLE_OPTS% -classpath `"%CLASSPATH%`" org.gradle.wrapper.GradleWrapperMain %*`r`n"
-          [System.IO.File]::WriteAllText("android-app\gradlew.bat", $gradlew, [System.Text.ASCIIEncoding]::new())
           Write-Host "Android project assembled"
 
       - name: Build APK with Gradle
