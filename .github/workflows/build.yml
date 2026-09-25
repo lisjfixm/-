@@ -166,6 +166,15 @@ jobs:
           Copy-Item -Recurse $proj $simpleProj
           Write-Host "Copied project to $simpleProj"
 
+          # 檢查並修改 builder.json
+          $builderJson = Join-Path $simpleProj "settings\v2\packages\builder.json"
+          Write-Host "---- builder.json ----"
+          if (Test-Path $builderJson) {
+            Get-Content $builderJson
+          } else {
+            Write-Host "(no builder.json)"
+          }
+
           # 建立 batch 檔來執行 build，用點語法傳遞巢狀參數
           $batchContent = "echo off`r`ncd /d `"$editorDir`"`r`n`"CocosCreator.exe`" --project `"$simpleProj`" --build `"platform=android;debug=false;packages.android.packageName=com.mrtgd.game;packages.android.apiLevel=android-30`"`r`necho Cocos exited with code %ERRORLEVEL%`r`n"
           [System.IO.File]::WriteAllText("run_build.bat", $batchContent, [System.Text.ASCIIEncoding]::new())
