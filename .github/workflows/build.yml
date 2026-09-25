@@ -179,6 +179,7 @@ jobs:
             platform = "android"
             buildPath = "project://build"
             debug = $false
+            compileType = "release"
             md5Cache = $false
             sourceMaps = $false
             outputName = "MoRiTeGongDui"
@@ -252,6 +253,7 @@ jobs:
           $buildConfig = @{
             platform = "android"
             debug = $false
+            compileType = "release"
             outputName = "MoRiTeGongDui"
             orientation = @{
               portrait = $true
@@ -296,6 +298,20 @@ jobs:
           # 把 build 結果複製回 workspace
           if (Test-Path $buildDir) {
             Copy-Item -Recurse $buildDir "project\build" -Force
+          }
+
+          # 手動執行 gradle build 產生 APK
+          $gradleProj = Join-Path $buildDir "MoRiTeGongDui\proj"
+          if (Test-Path $gradleProj) {
+            Write-Host "Running gradle build in $gradleProj"
+            Push-Location $gradleProj
+            $env:ANDROID_HOME = $env:ANDROID_HOME
+            $env:ANDROID_NDK_HOME = $env:ANDROID_NDK_HOME
+            & .\gradlew.bat assembleRelease --no-daemon -Dorg.gradle.jvmargs="-Xmx2048m" 2>&1 | Select-Object -Last 50
+            Write-Host "Gradle exit code: $LASTEXITCODE"
+            Pop-Location
+          } else {
+            Write-Host "Gradle project not found at $gradleProj"
           }
 
       - name: Locate APK
