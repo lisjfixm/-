@@ -147,12 +147,11 @@ jobs:
           $hasModJs = Test-Path $modHooks
           Write-Host "Verification: packageName=$hasPkg, apiLevel=$hasApi, envSdk=$hasEnvSdk, modJs=$hasModJs"
 
-      # Patch native-pack-tool: 修復 replaceEnvVariables 和 orientation 錯誤
+      # Patch native-pack-tool: 修復 replaceEnvVariables 和 orientation 錯誤（搜尋整個 cocos 目錄）
       - name: Patch native-pack-tool
         shell: pwsh
         run: |
-          $nptDir = "cocos\resources\resources\3d\engine\scripts\native-pack-tool"
-          node patch-npt.js $nptDir
+          node patch-npt.js cocos
 
       - name: Configure Cocos preferences
         shell: pwsh
@@ -307,7 +306,10 @@ jobs:
             Push-Location $gradleProj
             # 增加 stack size 避免 StackOverflowError
             $gp = Get-Content gradle.properties -Raw
-            $gp = $gp -replace 'org\.gradle\.jvmargs=.*', 'org.gradle.jvmargs=-Xmx4096m -Xss8m -XX:MaxMetaspaceSize=512m'
+            $gp = $gp -replace '#?\s*org\.gradle\.jvmargs=.*', 'org.gradle.jvmargs=-Xmx4096m -Xss8m -XX:MaxMetaspaceSize=512m'
+            if ($gp -notmatch 'org\.gradle\.jvmargs=') {
+              $gp += "`r`norg.gradle.jvmargs=-Xmx4096m -Xss8m -XX:MaxMetaspaceSize=512m`r`n"
+            }
             [System.IO.File]::WriteAllText("gradle.properties", $gp, [System.Text.UTF8Encoding]::new($false))
             Get-Content gradle.properties
             $env:ANDROID_HOME = $env:ANDROID_HOME
