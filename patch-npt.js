@@ -47,25 +47,37 @@ walkDir(nptDir, (file) => {
     }
   }
 
-  // Patch replaceEnvVariables function body: 把 str.replace 改成 (str||'').replace
+  // Patch replaceEnvVariables function body: 找到函數體，把所有 xxx.replace( 改成 (xxx||'').replace(
   if (c.includes("replaceEnvVariables")) {
     const before = c;
-    // 找到 replaceEnvVariables 函數，把裡面的 .replace 呼叫改成安全存取
-    // 先找函數定義位置
     const funcIdx = c.indexOf("replaceEnvVariables");
     if (funcIdx >= 0) {
-      // 找函數體的結束位置（下一個函數定義或類別結束）
-      // 簡單做法：在接下來 500 個字元內找 str.replace 並取代
-      const segment = c.substring(funcIdx, funcIdx + 500);
-      if (segment.includes(".replace(")) {
-        // 把參數名.replace 改成 (參數名||'').replace
-        const patchedSegment = segment.replace(/(\w+)\.replace\(/g, "($1||'').replace(");
-        c = c.substring(0, funcIdx) + patchedSegment + c.substring(funcIdx + 500);
+      const braceStart = c.indexOf("{", funcIdx);
+      if (braceStart >= 0) {
+        let depth = 0;
+        let braceEnd = braceStart;
+        for (let i = braceStart; i < c.length; i++) {
+          if (c[i] === '{') depth++;
+          else if (c[i] === '}') { depth--; if (depth === 0) { braceEnd = i; break; } }
+        }
+        const funcBody = c.substring(braceStart, braceEnd + 1);
+        const patchedBody = funcBody.replace(/([a-zA-Z_$][a-zA-Z0-9_$]*)\.replace\(/g, "($1||'').replace(");
+        c = c.substring(0, braceStart) + patchedBody + c.substring(braceEnd + 1);
         if (c !== before) {
           changed = true;
-          console.log("Patched replaceEnvVariables function body in " + file);
+          console.log("Aggressively patched replaceEnvVariables body in " + file);
         }
       }
+    }
+  }
+
+  // Patch call sites: xxx.replaceEnvVariables(arg) -> xxx.replaceEnvVariables(arg||'')
+  if (c.includes(".replaceEnvVariables(")) {
+    const before = c;
+    c = c.replace(/(\.replaceEnvVariables)\(([^)]+)\)/g, "$1($2||'')");
+    if (c !== before) {
+      changed = true;
+      console.log("Patched call sites in " + file);
     }
   }
 

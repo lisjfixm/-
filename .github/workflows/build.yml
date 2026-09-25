@@ -305,9 +305,14 @@ jobs:
           if (Test-Path $gradleProj) {
             Write-Host "Running gradle build in $gradleProj"
             Push-Location $gradleProj
+            # 增加 stack size 避免 StackOverflowError
+            $gp = Get-Content gradle.properties -Raw
+            $gp = $gp -replace 'org\.gradle\.jvmargs=.*', 'org.gradle.jvmargs=-Xmx4096m -Xss8m -XX:MaxMetaspaceSize=512m'
+            [System.IO.File]::WriteAllText("gradle.properties", $gp, [System.Text.UTF8Encoding]::new($false))
+            Get-Content gradle.properties
             $env:ANDROID_HOME = $env:ANDROID_HOME
             $env:ANDROID_NDK_HOME = $env:ANDROID_NDK_HOME
-            & .\gradlew.bat assembleRelease --no-daemon -Dorg.gradle.jvmargs="-Xmx2048m" 2>&1 | Select-Object -Last 50
+            & .\gradlew.bat assembleRelease --no-daemon 2>&1 | Select-Object -Last 80
             Write-Host "Gradle exit code: $LASTEXITCODE"
             Pop-Location
           } else {
