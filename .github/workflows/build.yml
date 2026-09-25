@@ -126,22 +126,6 @@ jobs:
             Write-Host "Copied android .js files to modules/platform-extensions"
           }
 
-          # 也複製 native extension 的 .js 檔
-          $srcNative = Join-Path $asarDir "platforms\extensions\native\dist\builder"
-          $dstNative = Join-Path $asarDir "modules\platform-extensions\extensions\native\dist\builder"
-          if (Test-Path $dstNative) {
-            Copy-Item (Join-Path $srcNative "*.js") $dstNative -Force -Recurse
-            # Patch native hooks: 確保 orientation 不為 undefined
-            $nativeHooks = Join-Path $dstNative "hooks.js"
-            if (Test-Path $nativeHooks) {
-              $content = Get-Content $nativeHooks -Raw
-              $content = $content -replace 's\.android\.orientation=n\.android\.orientation', 's.android.orientation=n.android.orientation||{landscapeRight:!0,landscapeLeft:!0,portrait:!1,upsideDown:!1}'
-              [System.IO.File]::WriteAllText($nativeHooks, $content, [System.Text.UTF8Encoding]::new($false))
-              Write-Host "Patched native hooks orientation"
-            }
-            Write-Host "Copied native .js files to modules/platform-extensions"
-          }
-
           # Repack
           Remove-Item $asarPath.FullName -Force
           asar pack $asarDir $asarPath.FullName
@@ -191,28 +175,10 @@ jobs:
             $content = Get-Content $f.FullName -Raw
             if ($content -match "setOrientation") {
               Write-Host "Patching setOrientation in $($f.FullName)"
-              # 直接把 setOrientation 函數體替換成安全版本
-              # 先找函數開始位置
-              $idx = $content.IndexOf("setOrientation(")
-              if ($idx -ge 0) {
-                # 找到函數的開頭 {
-                $braceStart = $content.IndexOf("{", $idx)
-                if ($braceStart -ge 0) {
-                  # 找到匹配的 }
-                  $depth = 0
-                  $braceEnd = $braceStart
-                  for ($i = $braceStart; $i -lt $content.Length; $i++) {
-                    if ($content[$i] -eq '{') { $depth++ }
-                    elseif ($content[$i] -eq '}') { $depth--; if ($depth -eq 0) { $braceEnd = $i; break } }
-                  }
-                  # 替換函數體
-                  $oldFunc = $content.Substring($idx, $braceEnd - $idx + 1)
-                  $newFunc = "setOrientation(o){if(!o){o={landscapeRight:!0,landscapeLeft:!0,portrait:!1,upsideDown:!1}}try{`n" + $oldFunc.Substring($oldFunc.IndexOf("{")+1, $oldFunc.Length-$oldFunc.IndexOf("{")-2) + "`n}catch(e){console.log('setOrientation error:',e.message)}"
-                  $content = $content.Replace($oldFunc, $newFunc)
-                  [System.IO.File]::WriteAllText($f.FullName, $content, [System.Text.UTF8Encoding]::new($false))
-                  Write-Host "Patched setOrientation (full function)"
-                }
-              }
+              # 處理 TypeScript 型別註解，擷取參數名稱
+              $content = $content -replace 'setOrientation\s*\((\w+)[^)]*\)\s*\{', 'setOrientation($1){$1=$1||{landscapeRight:!0,landscapeLeft:!0,portrait:!1,upsideDown:!1};'
+              [System.IO.File]::WriteAllText($f.FullName, $content, [System.Text.UTF8Encoding]::new($false))
+              Write-Host "Patched setOrientation"
             }
           }
 
