@@ -174,11 +174,16 @@ jobs:
           foreach ($f in $androidFiles) {
             $content = Get-Content $f.FullName -Raw
             if ($content -match "setOrientation") {
-              Write-Host "Patching setOrientation in $($f.FullName)"
-              # 處理 TypeScript 型別註解，擷取參數名稱
+              Write-Host "Patching orientation access in $($f.FullName)"
+              # 暴力法：把所有 orientation 相關的存取改成安全存取
+              $content = $content -replace '(\w+)\.landscapeRight', '($1||{}).landscapeRight'
+              $content = $content -replace '(\w+)\.landscapeLeft', '($1||{}).landscapeLeft'
+              $content = $content -replace '(\w+)\.portrait', '($1||{}).portrait'
+              $content = $content -replace '(\w+)\.upsideDown', '($1||{}).upsideDown'
+              # 也在 setOrientation 函數開頭加入預設值
               $content = $content -replace 'setOrientation\s*\((\w+)[^)]*\)\s*\{', 'setOrientation($1){$1=$1||{landscapeRight:!0,landscapeLeft:!0,portrait:!1,upsideDown:!1};'
               [System.IO.File]::WriteAllText($f.FullName, $content, [System.Text.UTF8Encoding]::new($false))
-              Write-Host "Patched setOrientation"
+              Write-Host "Patched orientation access"
             }
           }
 
