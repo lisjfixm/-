@@ -47,6 +47,17 @@ walkDir(nptDir, (file) => {
     }
   }
 
+  // Patch replaceEnvVariables call sites: 確保傳入值不為 undefined
+  if (c.includes("replaceEnvVariables(")) {
+    const before = c;
+    // 只 patch 有物件前綴的呼叫，如 cchelper.replaceEnvVariables(xxx)
+    c = c.replace(/(\.\s*replaceEnvVariables)\(([^)]+)\)/g, "$1($2||'')");
+    if (c !== before) {
+      changed = true;
+      console.log("Patched replaceEnvVariables call sites in " + file);
+    }
+  }
+
   // Patch setOrientation and orientation access (only in android files)
   if (file.includes("android") && c.includes("setOrientation")) {
     const before = c;
