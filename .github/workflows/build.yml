@@ -147,45 +147,12 @@ jobs:
           $hasModJs = Test-Path $modHooks
           Write-Host "Verification: packageName=$hasPkg, apiLevel=$hasApi, envSdk=$hasEnvSdk, modJs=$hasModJs"
 
-      # Patch native-pack-tool: 修復 replaceEnvVariables undefined 錯誤
+      # Patch native-pack-tool: 修復 replaceEnvVariables 和 orientation 錯誤
       - name: Patch native-pack-tool
         shell: pwsh
         run: |
           $nptDir = "cocos\resources\resources\3d\engine\scripts\native-pack-tool"
-          $files = Get-ChildItem -Recurse -Include *.js,*.ts $nptDir -ErrorAction SilentlyContinue
-          $patched = 0
-          foreach ($f in $files) {
-            $content = Get-Content $f.FullName -Raw
-            if ($content -match "replaceEnvVariables") {
-              Write-Host "Found replaceEnvVariables in $($f.FullName)"
-              # 多種函數定義方式都處理
-              $content = $content -replace 'replaceEnvVariables\s*=\s*function\s*\((\w+)\)\s*\{', 'replaceEnvVariables=function($1){if("undefined"==typeof $1||null===$1)return "";'
-              $content = $content -replace 'function\s+replaceEnvVariables\s*\((\w+)\)\s*\{', 'function replaceEnvVariables($1){if("undefined"==typeof $1||null===$1)return "";'
-              $content = $content -replace 'replaceEnvVariables\s*\((\w+)\)\s*\{', 'replaceEnvVariables($1){if("undefined"==typeof $1||null===$1)return "";'
-              [System.IO.File]::WriteAllText($f.FullName, $content, [System.Text.UTF8Encoding]::new($false))
-              $patched++
-              Write-Host "Patched $($f.FullName)"
-            }
-          }
-          Write-Host "Patched $patched files"
-
-          # Patch setOrientation: 處理 undefined orientation
-          $androidFiles = Get-ChildItem -Recurse -Include android.js,android.ts $nptDir -ErrorAction SilentlyContinue
-          foreach ($f in $androidFiles) {
-            $content = Get-Content $f.FullName -Raw
-            if ($content -match "setOrientation") {
-              Write-Host "Patching orientation access in $($f.FullName)"
-              # 暴力法：把所有 orientation 相關的存取改成安全存取
-              $content = $content -replace '(\w+)\.landscapeRight', '($1||{}).landscapeRight'
-              $content = $content -replace '(\w+)\.landscapeLeft', '($1||{}).landscapeLeft'
-              $content = $content -replace '(\w+)\.portrait', '($1||{}).portrait'
-              $content = $content -replace '(\w+)\.upsideDown', '($1||{}).upsideDown'
-              # 也在 setOrientation 函數開頭加入預設值
-              $content = $content -replace 'setOrientation\s*\((\w+)[^)]*\)\s*\{', 'setOrientation($1){$1=$1||{landscapeRight:!0,landscapeLeft:!0,portrait:!1,upsideDown:!1};'
-              [System.IO.File]::WriteAllText($f.FullName, $content, [System.Text.UTF8Encoding]::new($false))
-              Write-Host "Patched orientation access"
-            }
-          }
+          node patch-npt.js $nptDir
 
       - name: Configure Cocos preferences
         shell: pwsh
