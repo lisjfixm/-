@@ -217,9 +217,33 @@ jobs:
             Write-Host "(no builder.json)"
           }
 
-          # 建立 batch 檔，嘗試用單引號 JSON 傳遞巢狀 packages
-          $buildArgs = "platform=android;debug=false;packages={'android':{'packageName':'com.mrtgd.game','apiLevel':'android-30'}}"
-          $batchContent = "echo off`r`ncd /d `"$editorDir`"`r`n`"CocosCreator.exe`" --project `"$simpleProj`" --build `"$buildArgs`"`r`necho Cocos exited with code %ERRORLEVEL%`r`n"
+          # 建立 build config JSON 檔
+          $buildConfig = @{
+            platform = "android"
+            debug = $false
+            outputName = "MoRiTeGongDui"
+            packages = @{
+              android = @{
+                packageName = "com.mrtgd.game"
+                apiLevel = "android-30"
+                appABIs = @("arm64-v8a")
+                useDebugKeystore = $true
+                orientation = @{
+                  portrait = $true
+                  upsideDown = $false
+                  landscapeRight = $false
+                  landscapeLeft = $false
+                }
+              }
+            }
+          }
+          $buildConfigJson = $buildConfig | ConvertTo-Json -Depth 10 -Compress
+          $configPath = Join-Path (Get-Location).Path "build_config.json"
+          [System.IO.File]::WriteAllText($configPath, $buildConfigJson, [System.Text.UTF8Encoding]::new($false))
+          Write-Host "Build config: $buildConfigJson"
+
+          # 建立 batch 檔，用 configPath
+          $batchContent = "echo off`r`ncd /d `"$editorDir`"`r`n`"CocosCreator.exe`" --project `"$simpleProj`" --build `"configPath=$configPath`"`r`necho Cocos exited with code %ERRORLEVEL%`r`n"
           [System.IO.File]::WriteAllText("run_build.bat", $batchContent, [System.Text.ASCIIEncoding]::new())
           Write-Host "Batch file created"
           Get-Content run_build.bat
