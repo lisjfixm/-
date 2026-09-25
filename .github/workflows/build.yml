@@ -217,8 +217,9 @@ jobs:
             Write-Host "(no builder.json)"
           }
 
-          # 建立 batch 檔來執行 build，patch 已設定預設值
-          $batchContent = "echo off`r`ncd /d `"$editorDir`"`r`n`"CocosCreator.exe`" --project `"$simpleProj`" --build `"platform=android;debug=false`"`r`necho Cocos exited with code %ERRORLEVEL%`r`n"
+          # 建立 batch 檔，嘗試用單引號 JSON 傳遞巢狀 packages
+          $buildArgs = "platform=android;debug=false;packages={'android':{'packageName':'com.mrtgd.game','apiLevel':'android-30'}}"
+          $batchContent = "echo off`r`ncd /d `"$editorDir`"`r`n`"CocosCreator.exe`" --project `"$simpleProj`" --build `"$buildArgs`"`r`necho Cocos exited with code %ERRORLEVEL%`r`n"
           [System.IO.File]::WriteAllText("run_build.bat", $batchContent, [System.Text.ASCIIEncoding]::new())
           Write-Host "Batch file created"
           Get-Content run_build.bat
