@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build Android APK (WebView)
 
 on:
   push:
@@ -12,7 +12,6 @@ jobs:
     env:
       ANDROID_API: "30"
       BUILD_TOOLS: "30.0.3"
-      NDK_VER: "23.2.8568313"
       COCOS_VER: "3.6.1"
       PACKAGE_NAME: "com.mrtgd.game"
       ELECTRON_DISABLE_GPU: "1"
@@ -26,17 +25,7 @@ jobs:
         shell: pwsh
         run: |
           Expand-Archive -Path "末日.zip" -DestinationPath project -Force
-          Write-Host "--- project root ---"
-          Get-ChildItem project | Select-Object Name | Format-Table -AutoSize
-
-      # 把擴展複製到專案，自動注入 Android build 設定
-      - name: Install build-fixer extension
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path "project\extensions\build-fixer" | Out-Null
-          Copy-Item "extensions\build-fixer\*" "project\extensions\build-fixer\" -Recurse -Force
-          Write-Host "Extension installed:"
-          Get-ChildItem "project\extensions\build-fixer"
+          Write-Host "Project unzipped"
 
       - name: Set up JDK 11
         uses: actions/setup-java@v4
@@ -48,287 +37,146 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Install Android packages
+        shell: pwsh
         run: |
-          sdkmanager --install "platforms;android-${env:ANDROID_API}" "build-tools;${env:BUILD_TOOLS}" "ndk;${env:NDK_VER}"
-          echo "ANDROID_HOME=$env:ANDROID_HOME" >> $env:GITHUB_ENV
-          echo "ANDROID_NDK_HOME=$env:ANDROID_HOME\\ndk\\${env:NDK_VER}" >> $env:GITHUB_ENV
+          sdkmanager "platforms;android-30" "build-tools;30.0.3" "platform-tools"
+          Write-Host "Android SDK ready"
 
       - name: Download Cocos Creator
         shell: pwsh
         run: |
-          $url = "https://download.cocos.com/CocosCreator/v$env:COCOS_VER/CocosCreator-v$env:COCOS_VER-win-091618.zip"
-          Write-Host "Downloading $url"
+          $url = "https://download.cocos.com/CocosCreator/v3.6.1/CocosCreator-v3.6.1-win-091618.zip"
+          $output = "cocos.zip"
           $ok = $false
           for ($i = 1; $i -le 5; $i++) {
-            Write-Host "Attempt $i/5"
-            curl.exe -L --fail --retry 3 --retry-delay 5 -C - -o cocos.zip $url
-            if ((Test-Path cocos.zip) -and (Get-Item cocos.zip).Length -gt 900000000) {
-              Write-Host "Download OK: $((Get-Item cocos.zip).Length) bytes"
+            Write-Host "Download attempt $i..."
+            try {
+              Invoke-WebRequest -Uri $url -OutFile $output -UseBasicParsing -TimeoutSec 600
               $ok = $true
               break
+            } catch {
+              Write-Host "Attempt $i failed: $($_.Exception.Message)"
+              Start-Sleep -Seconds 10
             }
-            Write-Host "Download incomplete, retrying..."
-            Start-Sleep -Seconds 10
           }
           if (-not $ok) { Write-Error "Download failed after 5 attempts"; exit 1 }
+          Write-Host "Downloaded: $((Get-Item $output).Length) bytes"
 
       - name: Extract Cocos Creator
-        run: Expand-Archive -Path cocos.zip -DestinationPath cocos -Force
-
-      # Patch Android builder 的預設值，繞過 required 檢查
-      - name: Patch Android builder defaults
         shell: pwsh
         run: |
-          $asarPath = Get-ChildItem -Recurse -Filter "app.asar" cocos | Select-Object -First 1
-          if (-not $asarPath) { Write-Host "No app.asar found"; exit 1 }
-          Write-Host "Found app.asar: $($asarPath.FullName)"
-          Write-Host "Original size: $($asarPath.Length)"
-
-          npm install -g @electron/asar 2>&1 | Out-Null
-          $asarDir = Join-Path $env:RUNNER_TEMP "app-extracted"
-          if (Test-Path $asarDir) { Remove-Item -Recurse -Force $asarDir }
-          asar extract $asarPath.FullName $asarDir
-          Write-Host "Extracted to $asarDir"
-
-          $optionsJs = Join-Path $asarDir "platforms\extensions\android\dist\builder\options.js"
-          if (Test-Path $optionsJs) {
-            $content = Get-Content $optionsJs -Raw
-            $content = $content.Replace('packageName:""', 'packageName:"com.mrtgd.game"')
-            $content = $content.Replace('apiLevel:"android-26"', 'apiLevel:"android-30"')
-            [System.IO.File]::WriteAllText($optionsJs, $content, [System.Text.UTF8Encoding]::new($false))
-            Write-Host "options.js patched"
-          }
-
-          $indexJs = Join-Path $asarDir "platforms\extensions\android\dist\builder\index.js"
-          if (Test-Path $indexJs) {
-            $content = Get-Content $indexJs -Raw
-            $content = $content.Replace('verifyRules:["required"]', 'verifyRules:[]')
-            [System.IO.File]::WriteAllText($indexJs, $content, [System.Text.UTF8Encoding]::new($false))
-            Write-Host "index.js patched"
-          }
-
-          # Patch hooks.js: 用環境變數取代 Editor.Profile.getConfig
-          $hooksJs = Join-Path $asarDir "platforms\extensions\android\dist\builder\hooks.js"
-          if (Test-Path $hooksJs) {
-            $content = Get-Content $hooksJs -Raw
-            $oldStr = 'k.sdkPath=await Editor.Profile.getConfig("program","android_sdk")||"",k.ndkPath=await Editor.Profile.getConfig("program","android_ndk")||""'
-            $newStr = 'k.sdkPath=process.env.ANDROID_HOME||"",k.ndkPath=process.env.ANDROID_NDK_HOME||""'
-            $content = $content.Replace($oldStr, $newStr)
-            [System.IO.File]::WriteAllText($hooksJs, $content, [System.Text.UTF8Encoding]::new($false))
-            Write-Host "hooks.js patched (SDK/NDK from env)"
-          }
-
-          # 關鍵：把 .js 檔複製到 modules/platform-extensions 目錄，覆蓋 .ccc
-          $srcBuilder = Join-Path $asarDir "platforms\extensions\android\dist\builder"
-          $dstBuilder = Join-Path $asarDir "modules\platform-extensions\extensions\android\dist\builder"
-          if (Test-Path $dstBuilder) {
-            Copy-Item (Join-Path $srcBuilder "*.js") $dstBuilder -Force
-            Write-Host "Copied android .js files to modules/platform-extensions"
-          }
-
-          # Repack
-          Remove-Item $asarPath.FullName -Force
-          asar pack $asarDir $asarPath.FullName
-          $newSize = (Get-Item $asarPath.FullName).Length
-          Write-Host "Repacked app.asar, new size: $newSize"
-
-          # 驗證
-          $verifyDir = Join-Path $env:RUNNER_TEMP "app-verify"
-          if (Test-Path $verifyDir) { Remove-Item -Recurse -Force $verifyDir }
-          asar extract $asarPath.FullName $verifyDir
-          $verifyOptions = Join-Path $verifyDir "platforms\extensions\android\dist\builder\options.js"
-          $verifyContent = Get-Content $verifyOptions -Raw
-          $hasPkg = $verifyContent.Contains('packageName:"com.mrtgd.game"')
-          $hasApi = $verifyContent.Contains('apiLevel:"android-30"')
-          $verifyHooks = Join-Path $verifyDir "platforms\extensions\android\dist\builder\hooks.js"
-          $verifyHooksContent = Get-Content $verifyHooks -Raw
-          $hasEnvSdk = $verifyHooksContent.Contains('process.env.ANDROID_HOME')
-          $modHooks = Join-Path $verifyDir "modules\platform-extensions\extensions\android\dist\builder\hooks.js"
-          $hasModJs = Test-Path $modHooks
-          Write-Host "Verification: packageName=$hasPkg, apiLevel=$hasApi, envSdk=$hasEnvSdk, modJs=$hasModJs"
-
-      # Patch native-pack-tool: 修復 replaceEnvVariables 和 orientation 錯誤（搜尋整個 cocos 目錄）
-      - name: Patch native-pack-tool
-        shell: pwsh
-        run: |
-          node patch-npt.js cocos
+          Expand-Archive -Path "cocos.zip" -DestinationPath cocos -Force
+          Write-Host "Extracted"
 
       - name: Configure Cocos preferences
         shell: pwsh
         run: |
-          $prefDir = "$env:APPDATA\\CocosCreator\\3.6.1"
+          $prefDir = "$env:APPDATA\CocosCreator\3.6.1"
           New-Item -ItemType Directory -Force -Path $prefDir | Out-Null
           $pref = @{
             sdk = @{
               android_sdk_root = "$env:ANDROID_HOME"
-              android_ndk_root = "$env:ANDROID_NDK_HOME"
               jdk_home = "$env:JAVA_HOME"
             }
           }
           $json = $pref | ConvertTo-Json -Depth 6
-          [System.IO.File]::WriteAllText("$prefDir\\packages.json", $json, [System.Text.UTF8Encoding]::new($false))
-          Get-Content "$prefDir\\packages.json"
+          [System.IO.File]::WriteAllText("$prefDir\packages.json", $json, [System.Text.UTF8Encoding]::new($false))
+          Write-Host "Preferences set"
 
-      # 寫出正確的 build config JSON（無 BOM、欄位名正確）
-      - name: Write build config
-        shell: pwsh
-        run: |
-          $cfg = @{
-            name = "mrtgd"
-            platform = "android"
-            buildPath = "project://build"
-            debug = $false
-            compileType = "release"
-            md5Cache = $false
-            sourceMaps = $false
-            outputName = "MoRiTeGongDui"
-            mainBundleCompressionType = "merge_dep"
-            useSplashScreen = $true
-            packAutoAtlas = $true
-            polyfills = @{ asyncFunctions = $false }
-            packages = @{
-              android = @{
-                packageName = "com.mrtgd.game"
-                orientation = @{
-                  portrait = $true
-                  upsideDown = $false
-                  landscapeRight = $false
-                  landscapeLeft = $false
-                }
-                apiLevel = "android-30"
-                appABIs = @("arm64-v8a")
-                useDebugKeystore = $true
-                keystorePath = ""
-                keystorePassword = ""
-                keystoreAlias = ""
-                keystoreAliasPassword = ""
-                appBundle = $false
-                androidInstant = $false
-                remoteUrl = ""
-                sdkPath = ""
-                ndkPath = ""
-                renderBackEnd = @{ vulkan = $false; gles3 = $true; gles2 = $false }
-              }
-              native = @{
-                encrypted = $false
-                xxteaKey = ""
-                compressZip = $false
-                JobSystem = "none"
-              }
-            }
-          }
-          $json = $cfg | ConvertTo-Json -Depth 10
-          [System.IO.File]::WriteAllText("build.json", $json, [System.Text.UTF8Encoding]::new($false))
-          Write-Host "--- build.json ---"
-          Get-Content build.json
-
-      - name: Build APK
+      - name: Build web-mobile with Cocos Creator
         shell: pwsh
         run: |
           $creator = (Get-ChildItem -Recurse -Filter "CocosCreator.exe" cocos | Select-Object -First 1).FullName
           Write-Host "Editor: $creator"
           $workspace = (Get-Location).Path
-          $proj = Join-Path $workspace "project"
-          $log  = Join-Path $workspace "build.log"
-          $editorDir = Split-Path $creator
-          Write-Host "Project: $proj"
-
-          # 把 project 複製到簡單路徑
           $simpleProj = "D:\cocos_project"
           if (Test-Path $simpleProj) { Remove-Item -Recurse -Force $simpleProj }
-          Copy-Item -Recurse $proj $simpleProj
-          Write-Host "Copied project to $simpleProj"
+          Copy-Item -Recurse "project" $simpleProj
 
-          # 檢查並修改 builder.json
-          $builderJson = Join-Path $simpleProj "settings\v2\packages\builder.json"
-          Write-Host "---- builder.json ----"
-          if (Test-Path $builderJson) {
-            Get-Content $builderJson
-          } else {
-            Write-Host "(no builder.json)"
-          }
-
-          # 建立 build config JSON 檔
           $buildConfig = @{
-            platform = "android"
+            platform = "web-mobile"
+            buildPath = "build"
             debug = $false
-            compileType = "release"
-            outputName = "MoRiTeGongDui"
-            orientation = @{
-              portrait = $true
-              upsideDown = $false
-              landscapeRight = $false
-              landscapeLeft = $false
-            }
-            packages = @{
-              android = @{
-                packageName = "com.mrtgd.game"
-                apiLevel = "android-30"
-                appABIs = @("arm64-v8a")
-                useDebugKeystore = $true
-                orientation = @{
-                  portrait = $true
-                  upsideDown = $false
-                  landscapeRight = $false
-                  landscapeLeft = $false
-                }
-              }
-            }
+            outputName = "web-mobile"
+            sourceMaps = $false
+            md5Cache = $false
           }
-          $buildConfigJson = $buildConfig | ConvertTo-Json -Depth 10 -Compress
-          $configPath = Join-Path (Get-Location).Path "build_config.json"
-          [System.IO.File]::WriteAllText($configPath, $buildConfigJson, [System.Text.UTF8Encoding]::new($false))
-          Write-Host "Build config: $buildConfigJson"
+          $json = $buildConfig | ConvertTo-Json -Depth 10 -Compress
+          $configPath = Join-Path $workspace "web_build.json"
+          [System.IO.File]::WriteAllText($configPath, $json, [System.Text.UTF8Encoding]::new($false))
+          Write-Host "Config: $json"
 
-          # 建立 batch 檔，用 configPath
+          $editorDir = Split-Path $creator
           $batchContent = "echo off`r`ncd /d `"$editorDir`"`r`n`"CocosCreator.exe`" --project `"$simpleProj`" --build `"configPath=$configPath`"`r`necho Cocos exited with code %ERRORLEVEL%`r`n"
-          [System.IO.File]::WriteAllText("run_build.bat", $batchContent, [System.Text.ASCIIEncoding]::new())
-          Write-Host "Batch file created"
-          Get-Content run_build.bat
+          [System.IO.File]::WriteAllText("run_web_build.bat", $batchContent, [System.Text.ASCIIEncoding]::new())
+          & cmd /c "run_web_build.bat"
+          Write-Host "Build finished, exit: $LASTEXITCODE"
 
-          # 用 cmd /c 執行 batch，應該會真正等待
-          & cmd /c "run_build.bat"
-          Write-Host "Batch finished, exit code: $LASTEXITCODE"
-
-          Write-Host "---- build directory ----"
-          $buildDir = Join-Path $simpleProj "build"
-          if (Test-Path $buildDir) { Get-ChildItem -Recurse $buildDir | Select-Object FullName, Length | Format-Table -AutoSize } else { Write-Host "(no build dir)" }
-
-          # 把 build 結果複製回 workspace
-          if (Test-Path $buildDir) {
-            Copy-Item -Recurse $buildDir "project\build" -Force
-          }
-
-          # 手動執行 gradle build 產生 APK
-          $gradleProj = Join-Path $buildDir "MoRiTeGongDui\proj"
-          if (Test-Path $gradleProj) {
-            Write-Host "Running gradle build in $gradleProj"
-            Push-Location $gradleProj
-            # 用 GRADLE_OPTS 設定 stack size 避免 StackOverflowError
-            $env:GRADLE_OPTS = "-Xmx4096m -Xss16m -XX:MaxMetaspaceSize=512m"
-            $env:ANDROID_HOME = $env:ANDROID_HOME
-            $env:ANDROID_NDK_HOME = $env:ANDROID_NDK_HOME
-            & .\gradlew.bat assembleRelease --no-daemon 2>&1 | Select-Object -Last 80
-            Write-Host "Gradle exit code: $LASTEXITCODE"
-            Pop-Location
+          $webBuild = Join-Path $simpleProj "build\web-mobile"
+          if (Test-Path $webBuild) {
+            Write-Host "Web build output:"
+            Get-ChildItem $webBuild | Select-Object Name, Length | Format-Table -AutoSize
+            Copy-Item -Recurse $webBuild "web-output" -Force
           } else {
-            Write-Host "Gradle project not found at $gradleProj"
+            Write-Host "WARNING: web-mobile build dir not found, listing build dir:"
+            Get-ChildItem (Join-Path $simpleProj "build") -Recurse -ErrorAction SilentlyContinue | Select-Object FullName | Format-Table -AutoSize
           }
+
+      - name: Assemble Android project
+        shell: pwsh
+        run: |
+          # 複製 Android 模板
+          Copy-Item -Recurse "android-template" "android-app" -Force
+
+          # 把 web build 放到 assets/public
+          $assetsDir = "android-app\app\src\main\assets\public"
+          New-Item -ItemType Directory -Force -Path $assetsDir | Out-Null
+          if (Test-Path "web-output") {
+            Copy-Item -Recurse "web-output\*" $assetsDir -Force
+            Write-Host "Web files copied to assets:"
+            Get-ChildItem $assetsDir | Select-Object Name | Format-Table -AutoSize
+          } else {
+            Write-Host "ERROR: web-output not found!"
+            exit 1
+          }
+
+          # 下載 gradle wrapper jar
+          $wrapperJar = "android-app\gradle\wrapper\gradle-wrapper.jar"
+          $wrapperUrl = "https://raw.githubusercontent.com/gradle/gradle/v7.3.3/gradle/wrapper/gradle-wrapper.jar"
+          try {
+            Invoke-WebRequest -Uri $wrapperUrl -OutFile $wrapperJar -UseBasicParsing -TimeoutSec 60
+            Write-Host "Gradle wrapper jar downloaded"
+          } catch {
+            Write-Host "Failed to download wrapper jar: $($_.Exception.Message)"
+          }
+
+          # gradlew.bat
+          $gradlew = "@echo off`r`nset DIRNAME=%~dp0`r`nif `"%DIRNAME%`"==`"\" set DIRNAME=.`r`nset APP_HOME=%DIRNAME%`r`nset CLASSPATH=%APP_HOME%\gradle\wrapper\gradle-wrapper.jar`r`n`"%JAVA_HOME%\bin\java.exe`" %GRADLE_OPTS% -classpath `"%CLASSPATH%`" org.gradle.wrapper.GradleWrapperMain %*`r`n"
+          [System.IO.File]::WriteAllText("android-app\gradlew.bat", $gradlew, [System.Text.ASCIIEncoding]::new())
+          Write-Host "Android project assembled"
+
+      - name: Build APK with Gradle
+        shell: pwsh
+        run: |
+          Push-Location "android-app"
+          $env:ANDROID_HOME = $env:ANDROID_HOME
+          $env:GRADLE_OPTS = "-Xmx2048m"
+          & .\gradlew.bat assembleDebug --no-daemon 2>&1 | Select-Object -Last 60
+          Write-Host "Gradle exit: $LASTEXITCODE"
+          Pop-Location
 
       - name: Locate APK
         id: apk
         shell: pwsh
         run: |
-          $apk = Get-ChildItem -Recurse -Filter *.apk D:\cocos_project\build 2>$null | Select-Object -First 1
-          if (-not $apk) { $apk = Get-ChildItem -Recurse -Filter *.apk project\build 2>$null | Select-Object -First 1 }
+          $apk = Get-ChildItem -Recurse -Filter *.apk "android-app\app\build\outputs" 2>$null | Select-Object -First 1
           if (-not $apk) { $apk = Get-ChildItem -Recurse -Filter *.apk . 2>$null | Where-Object { $_.FullName -notlike "*cocos*" } | Select-Object -First 1 }
           if (-not $apk) { Write-Error "APK not found"; exit 1 }
-          Write-Host "Found: $($apk.FullName)"
+          Write-Host "Found: $($apk.FullName) ($($apk.Length) bytes)"
           echo "path=$($apk.FullName)" >> $env:GITHUB_OUTPUT
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: MoRiTeGongDui-APK
+          name: MoRiTeGongDui.apk
           path: ${{ steps.apk.outputs.path }}
-          if-no-files-found: error
