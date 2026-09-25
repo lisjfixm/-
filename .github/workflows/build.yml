@@ -75,11 +75,53 @@ jobs:
       - name: Extract Cocos Creator
         run: Expand-Archive -Path cocos.zip -DestinationPath cocos -Force
 
-      # 先跳過 patch，用原始 asar 確認 build 能進入 check 階段
-      - name: Skip patch (use original asar)
+      # Patch Android builder 的預設值，繞過 required 檢查
+      - name: Patch Android builder defaults
         shell: pwsh
         run: |
-          Write-Host "Using original app.asar without patching"
+          $asarPath = Get-ChildItem -Recurse -Filter "app.asar" cocos | Select-Object -First 1
+          if (-not $asarPath) { Write-Host "No app.asar found"; exit 1 }
+          Write-Host "Found app.asar: $($asarPath.FullName)"
+          Write-Host "Original size: $($asarPath.Length)"
+
+          npm install -g @electron/asar 2>&1 | Out-Null
+          $asarDir = Join-Path $env:RUNNER_TEMP "app-extracted"
+          if (Test-Path $asarDir) { Remove-Item -Recurse -Force $asarDir }
+          asar extract $asarPath.FullName $asarDir
+          Write-Host "Extracted to $asarDir"
+
+          $optionsJs = Join-Path $asarDir "platforms\extensions\android\dist\builder\options.js"
+          if (Test-Path $optionsJs) {
+            $content = Get-Content $optionsJs -Raw
+            $content = $content.Replace('packageName:""', 'packageName:"com.mrtgd.game"')
+            $content = $content.Replace('apiLevel:"android-26"', 'apiLevel:"android-30"')
+            [System.IO.File]::WriteAllText($optionsJs, $content, [System.Text.UTF8Encoding]::new($false))
+            Write-Host "options.js patched"
+          }
+
+          $indexJs = Join-Path $asarDir "platforms\extensions\android\dist\builder\index.js"
+          if (Test-Path $indexJs) {
+            $content = Get-Content $indexJs -Raw
+            $content = $content.Replace('verifyRules:["required"]', 'verifyRules:[]')
+            [System.IO.File]::WriteAllText($indexJs, $content, [System.Text.UTF8Encoding]::new($false))
+            Write-Host "index.js patched"
+          }
+
+          # Repack
+          Remove-Item $asarPath.FullName -Force
+          asar pack $asarDir $asarPath.FullName
+          $newSize = (Get-Item $asarPath.FullName).Length
+          Write-Host "Repacked app.asar, new size: $newSize"
+
+          # 驗證
+          $verifyDir = Join-Path $env:RUNNER_TEMP "app-verify"
+          if (Test-Path $verifyDir) { Remove-Item -Recurse -Force $verifyDir }
+          asar extract $asarPath.FullName $verifyDir
+          $verifyOptions = Join-Path $verifyDir "platforms\extensions\android\dist\builder\options.js"
+          $verifyContent = Get-Content $verifyOptions -Raw
+          $hasPkg = $verifyContent.Contains('packageName:"com.mrtgd.game"')
+          $hasApi = $verifyContent.Contains('apiLevel:"android-30"')
+          Write-Host "Verification: packageName=$hasPkg, apiLevel=$hasApi"
 
       - name: Configure Cocos preferences
         shell: pwsh
@@ -175,8 +217,8 @@ jobs:
             Write-Host "(no builder.json)"
           }
 
-          # 建立 batch 檔來執行 build，用點語法傳遞巢狀參數
-          $batchContent = "echo off`r`ncd /d `"$editorDir`"`r`n`"CocosCreator.exe`" --project `"$simpleProj`" --build `"platform=android;debug=false;packages.android.packageName=com.mrtgd.game;packages.android.apiLevel=android-30`"`r`necho Cocos exited with code %ERRORLEVEL%`r`n"
+          # 建立 batch 檔來執行 build，patch 已設定預設值
+          $batchContent = "echo off`r`ncd /d `"$editorDir`"`r`n`"CocosCreator.exe`" --project `"$simpleProj`" --build `"platform=android;debug=false`"`r`necho Cocos exited with code %ERRORLEVEL%`r`n"
           [System.IO.File]::WriteAllText("run_build.bat", $batchContent, [System.Text.ASCIIEncoding]::new())
           Write-Host "Batch file created"
           Get-Content run_build.bat
