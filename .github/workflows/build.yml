@@ -169,6 +169,19 @@ jobs:
           }
           Write-Host "Patched $patched files"
 
+          # Patch setOrientation: 處理 undefined orientation
+          $androidFiles = Get-ChildItem -Recurse -Include android.js,android.ts $nptDir -ErrorAction SilentlyContinue
+          foreach ($f in $androidFiles) {
+            $content = Get-Content $f.FullName -Raw
+            if ($content -match "setOrientation") {
+              Write-Host "Patching setOrientation in $($f.FullName)"
+              # 在 setOrientation 函數開頭加入預設 orientation
+              $content = $content -replace 'setOrientation\s*\((\w+)\)\s*\{', 'setOrientation($1){$1=$1||{landscapeRight:!0,landscapeLeft:!0,portrait:!1,upsideDown:!1};'
+              [System.IO.File]::WriteAllText($f.FullName, $content, [System.Text.UTF8Encoding]::new($false))
+              Write-Host "Patched setOrientation"
+            }
+          }
+
       - name: Configure Cocos preferences
         shell: pwsh
         run: |
