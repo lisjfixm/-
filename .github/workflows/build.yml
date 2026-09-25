@@ -151,23 +151,23 @@ jobs:
       - name: Patch native-pack-tool
         shell: pwsh
         run: |
-          $utilsFiles = Get-ChildItem -Recurse -Filter "utils.js" cocos\resources\resources\3d\engine\scripts\native-pack-tool -ErrorAction SilentlyContinue
-          if (-not $utilsFiles) {
-            Write-Host "No utils.js found, searching for .js files..."
-            $utilsFiles = Get-ChildItem -Recurse -Filter "*.js" cocos\resources\resources\3d\engine\scripts\native-pack-tool -ErrorAction SilentlyContinue
-          }
-          foreach ($f in $utilsFiles) {
+          $nptDir = "cocos\resources\resources\3d\engine\scripts\native-pack-tool"
+          $files = Get-ChildItem -Recurse -Include *.js,*.ts $nptDir -ErrorAction SilentlyContinue
+          $patched = 0
+          foreach ($f in $files) {
             $content = Get-Content $f.FullName -Raw
             if ($content -match "replaceEnvVariables") {
-              Write-Host "Patching $($f.FullName)"
-              # 在 replaceEnvVariables 函數開頭加入 undefined 檢查
-              $content = $content -replace 'function replaceEnvVariables\((\w+)\)\{', 'function replaceEnvVariables($1){if(void 0===$1||null===$1)return "";'
-              $content = $content -replace 'replaceEnvVariables=function\((\w+)\)\{', 'replaceEnvVariables=function($1){if(void 0===$1||null===$1)return "";'
+              Write-Host "Found replaceEnvVariables in $($f.FullName)"
+              # 多種函數定義方式都處理
+              $content = $content -replace 'replaceEnvVariables\s*=\s*function\s*\((\w+)\)\s*\{', 'replaceEnvVariables=function($1){if("undefined"==typeof $1||null===$1)return "";'
+              $content = $content -replace 'function\s+replaceEnvVariables\s*\((\w+)\)\s*\{', 'function replaceEnvVariables($1){if("undefined"==typeof $1||null===$1)return "";'
+              $content = $content -replace 'replaceEnvVariables\s*\((\w+)\)\s*\{', 'replaceEnvVariables($1){if("undefined"==typeof $1||null===$1)return "";'
               [System.IO.File]::WriteAllText($f.FullName, $content, [System.Text.UTF8Encoding]::new($false))
-              Write-Host "Patched"
+              $patched++
+              Write-Host "Patched $($f.FullName)"
             }
           }
-          Write-Host "native-pack-tool patch done"
+          Write-Host "Patched $patched files"
 
       - name: Configure Cocos preferences
         shell: pwsh
