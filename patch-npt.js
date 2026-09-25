@@ -47,14 +47,25 @@ walkDir(nptDir, (file) => {
     }
   }
 
-  // Patch replaceEnvVariables call sites: 確保傳入值不為 undefined
-  if (c.includes("replaceEnvVariables(")) {
+  // Patch replaceEnvVariables function body: 把 str.replace 改成 (str||'').replace
+  if (c.includes("replaceEnvVariables")) {
     const before = c;
-    // 只 patch 有物件前綴的呼叫，如 cchelper.replaceEnvVariables(xxx)
-    c = c.replace(/(\.\s*replaceEnvVariables)\(([^)]+)\)/g, "$1($2||'')");
-    if (c !== before) {
-      changed = true;
-      console.log("Patched replaceEnvVariables call sites in " + file);
+    // 找到 replaceEnvVariables 函數，把裡面的 .replace 呼叫改成安全存取
+    // 先找函數定義位置
+    const funcIdx = c.indexOf("replaceEnvVariables");
+    if (funcIdx >= 0) {
+      // 找函數體的結束位置（下一個函數定義或類別結束）
+      // 簡單做法：在接下來 500 個字元內找 str.replace 並取代
+      const segment = c.substring(funcIdx, funcIdx + 500);
+      if (segment.includes(".replace(")) {
+        // 把參數名.replace 改成 (參數名||'').replace
+        const patchedSegment = segment.replace(/(\w+)\.replace\(/g, "($1||'').replace(");
+        c = c.substring(0, funcIdx) + patchedSegment + c.substring(funcIdx + 500);
+        if (c !== before) {
+          changed = true;
+          console.log("Patched replaceEnvVariables function body in " + file);
+        }
+      }
     }
   }
 
