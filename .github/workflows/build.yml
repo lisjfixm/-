@@ -107,6 +107,17 @@ jobs:
             Write-Host "index.js patched"
           }
 
+          # Patch hooks.js: 用環境變數取代 Editor.Profile.getConfig
+          $hooksJs = Join-Path $asarDir "platforms\extensions\android\dist\builder\hooks.js"
+          if (Test-Path $hooksJs) {
+            $content = Get-Content $hooksJs -Raw
+            $oldStr = 'k.sdkPath=await Editor.Profile.getConfig("program","android_sdk")||"",k.ndkPath=await Editor.Profile.getConfig("program","android_ndk")||""'
+            $newStr = 'k.sdkPath=process.env.ANDROID_HOME||"",k.ndkPath=process.env.ANDROID_NDK_HOME||""'
+            $content = $content.Replace($oldStr, $newStr)
+            [System.IO.File]::WriteAllText($hooksJs, $content, [System.Text.UTF8Encoding]::new($false))
+            Write-Host "hooks.js patched (SDK/NDK from env)"
+          }
+
           # Repack
           Remove-Item $asarPath.FullName -Force
           asar pack $asarDir $asarPath.FullName
@@ -121,7 +132,10 @@ jobs:
           $verifyContent = Get-Content $verifyOptions -Raw
           $hasPkg = $verifyContent.Contains('packageName:"com.mrtgd.game"')
           $hasApi = $verifyContent.Contains('apiLevel:"android-30"')
-          Write-Host "Verification: packageName=$hasPkg, apiLevel=$hasApi"
+          $verifyHooks = Join-Path $verifyDir "platforms\extensions\android\dist\builder\hooks.js"
+          $verifyHooksContent = Get-Content $verifyHooks -Raw
+          $hasEnvSdk = $verifyHooksContent.Contains('process.env.ANDROID_HOME')
+          Write-Host "Verification: packageName=$hasPkg, apiLevel=$hasApi, envSdk=$hasEnvSdk"
 
       - name: Configure Cocos preferences
         shell: pwsh
