@@ -175,8 +175,13 @@ jobs:
             $content = Get-Content $f.FullName -Raw
             if ($content -match "setOrientation") {
               Write-Host "Patching setOrientation in $($f.FullName)"
-              # 在 setOrientation 函數開頭加入預設 orientation
-              $content = $content -replace 'setOrientation\s*\((\w+)\)\s*\{', 'setOrientation($1){$1=$1||{landscapeRight:!0,landscapeLeft:!0,portrait:!1,upsideDown:!1};'
+              # 用更安全的方式：把 orientation.landscapeRight 等存取改成安全存取
+              $content = $content -replace 'orientation\.landscapeRight', '(orientation||{}).landscapeRight'
+              $content = $content -replace 'orientation\.landscapeLeft', '(orientation||{}).landscapeLeft'
+              $content = $content -replace 'orientation\.portrait', '(orientation||{}).portrait'
+              $content = $content -replace 'orientation\.upsideDown', '(orientation||{}).upsideDown'
+              # 也在函數開頭加入預設值
+              $content = $content -replace 'setOrientation\s*\((\w+)\)\s*\{', 'setOrientation($1){$1=$1||{};'
               [System.IO.File]::WriteAllText($f.FullName, $content, [System.Text.UTF8Encoding]::new($false))
               Write-Host "Patched setOrientation"
             }
@@ -281,6 +286,12 @@ jobs:
             platform = "android"
             debug = $false
             outputName = "MoRiTeGongDui"
+            orientation = @{
+              portrait = $true
+              upsideDown = $false
+              landscapeRight = $false
+              landscapeLeft = $false
+            }
             packages = @{
               android = @{
                 packageName = "com.mrtgd.game"
