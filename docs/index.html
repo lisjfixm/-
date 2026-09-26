@@ -107,49 +107,20 @@
           };
         }
 
-        // Bundle loading with progress
+        // Bundle loading
         if (cc.assetManager) {
           var oldLoadBundle = cc.assetManager.loadBundle;
           cc.assetManager.loadBundle = function(name, options, onComplete) {
-            var taskName = '下載資源包 ' + name;
-            setStatus('⏳ ' + taskName + ' 0%');
-            // loadBundle doesn't have native progress, but we can poll bundle's progress
-            var timer = setInterval(function(){
-              // try to estimate from network
-            }, 500);
+            // Handle both (name, onComplete) and (name, options, onComplete)
+            if (typeof options === 'function') { onComplete = options; options = null; }
+            var taskName = '加載資源包: ' + name;
+            setStatus('⏳ ' + taskName + '...');
             return oldLoadBundle.call(this, name, options, function(err, bundle){
-              clearInterval(timer);
-              if (err) setStatus('✖ 資源包失敗: ' + name);
-              else {
-                setStatus('✅ 資源包完成: ' + name);
-                // Hook bundle.load for per-asset progress
-                if (bundle && bundle.load) {
-                  var oldBundleLoad = bundle.load.bind(bundle);
-                  bundle.load = function(progress, onComplete2){
-                    // bundle.load returns an asset task; hook its progress
-                    return oldBundleLoad(progress, function(err, asset){
-                      if (onComplete2) onComplete2(err, asset);
-                    });
-                  };
-                }
-              }
+              if (err) setStatus('✖ ' + taskName + ' 失敗');
+              else setStatus('✅ ' + taskName + ' 完成');
               if (onComplete) onComplete(err, bundle);
             });
           };
-
-          // Hook loadAny for general asset progress
-          var oldLoadAny = cc.assetManager.loadAny;
-          if (oldLoadAny) {
-            cc.assetManager.loadAny = function(asset, options, onComplete){
-              if (typeof options === 'function') { onComplete = options; options = null; }
-              var taskName = '加載資源';
-              setStatus('⏳ ' + taskName + '...');
-              return oldLoadAny.call(this, asset, options, function(err, res){
-                if (err) setStatus('✖ 資源加載失敗');
-                if (onComplete) onComplete(err, res);
-              });
-            };
-          }
         }
 
         // Game start
