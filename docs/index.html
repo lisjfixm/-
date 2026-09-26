@@ -56,5 +56,96 @@
     System.import('./index.js').catch(function(err) { console.error(err); })
 </script>
 
+<!-- GM Menu -->
+<style>
+  #gm-fab {
+    position: fixed; left: 10px; top: 40%; z-index: 99999;
+    width: 44px; height: 44px; border-radius: 50%;
+    background: rgba(255,60,60,0.85); color: #fff;
+    font-size: 13px; font-weight: bold; line-height: 44px;
+    text-align: center; cursor: pointer; user-select: none;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    font-family: sans-serif;
+  }
+  #gm-panel {
+    position: fixed; left: 60px; top: 30%; z-index: 99999;
+    width: 200px; background: rgba(20,20,30,0.95);
+    border-radius: 10px; padding: 12px; display: none;
+    font-family: sans-serif; color: #fff;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  }
+  #gm-panel h3 { margin: 0 0 8px; font-size: 14px; color: #ffcc00; }
+  #gm-panel button {
+    display: block; width: 100%; margin: 4px 0; padding: 8px;
+    background: #3a3a5c; color: #fff; border: none; border-radius: 6px;
+    font-size: 12px; cursor: pointer;
+  }
+  #gm-panel button:active { background: #5a5a8c; }
+  #gm-panel .gm-close { background: #666; }
+</style>
+<div id="gm-fab">GM</div>
+<div id="gm-panel">
+  <h3>GM Menu</h3>
+  <button onclick="gmAddCoin()">+100000 金幣</button>
+  <button onclick="gmAddGem()">+100000 寶石</button>
+  <button onclick="gmMaxLevel()">滿級 & 解鎖關卡</button>
+  <button onclick="gmFullPower()">補滿體力</button>
+  <button onclick="gmAddExp()">+100000 經驗</button>
+  <button onclick="gmReset()">重置存檔</button>
+  <button class="gm-close" onclick="gmToggle()">關閉</button>
+</div>
+<script>
+function gmToggle() {
+  var p = document.getElementById('gm-panel');
+  p.style.display = p.style.display === 'block' ? 'none' : 'block';
+}
+document.getElementById('gm-fab').addEventListener('click', gmToggle);
+
+function gmRead() {
+  try { return JSON.parse(localStorage.getItem('UserData') || '{}'); }
+  catch(e) { return {}; }
+}
+function gmWrite(d) {
+  localStorage.setItem('UserData', JSON.stringify(d));
+}
+function gmReload() { setTimeout(function(){ location.reload(); }, 300); }
+
+function gmAddCoin() {
+  var d = gmRead();
+  d.$coin = (d.$coin || 0) + 100000;
+  gmWrite(d); gmReload();
+}
+function gmAddGem() {
+  var d = gmRead();
+  d.$baoShi = (d.$baoShi || 0) + 100000;
+  gmWrite(d); gmReload();
+}
+function gmMaxLevel() {
+  var d = gmRead();
+  d.$roleLv = 999;
+  d.$openLevel = 999;
+  d.$curMap = 999;
+  d.$levelData = d.$levelData || {};
+  gmWrite(d); gmReload();
+}
+function gmFullPower() {
+  var d = gmRead();
+  d.$power = 999;
+  d.$powerTime = 0;
+  gmWrite(d); gmReload();
+}
+function gmAddExp() {
+  var d = gmRead();
+  d.$roleExp = (d.$roleExp || 0) + 100000;
+  gmWrite(d); gmReload();
+}
+function gmReset() {
+  if (confirm('確定要重置存檔嗎？')) {
+    localStorage.removeItem('UserData');
+    location.reload();
+  }
+}
+</script>
+
 </body>
 </html>
