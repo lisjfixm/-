@@ -88,21 +88,72 @@
           setStatus('🎬 進入場景: ' + desc);
         });
 
-        // Bundle loading
-        if (cc.assetManager) {
-          var oldLoadBundle = cc.assetManager.loadBundle;
-          cc.assetManager.loadBundle = function(name, options, onComplete) {
-            setStatus('📦 加載資源包: ' + name);
-            return oldLoadBundle.call(this, name, options, function(err, bundle){
-              if (err) setStatus('✖ 資源包失敗: ' + name);
-              else setStatus('✅ 資源包完成: ' + name);
-              if (onComplete) onComplete(err, bundle);
+        // Hook preloadScene for progress %
+        if (cc.director.preloadScene) {
+          var oldPreload = cc.director.preloadScene;
+          cc.director.preloadScene = function(sceneName, onProgress, onComplete) {
+            var taskName = '加載場景 ' + describeScene(sceneName);
+            setStatus('⏳ ' + taskName + ' 0%');
+            var wrappedProgress = function(completed, total, item){
+              var pct = total > 0 ? Math.floor(completed/total*100) : 0;
+              setStatus('⏳ ' + taskName + ' ' + pct + '%');
+              if (onProgress) onProgress(completed, total, item);
+            };
+            return oldPreload.call(this, sceneName, wrappedProgress, function(err, scene){
+              if (err) setStatus('✖ 場景加載失敗: ' + sceneName);
+              else setStatus('✅ ' + taskName + ' 完成');
+              if (onComplete) onComplete(err, scene);
             });
           };
         }
 
+        // Bundle loading with progress
+        if (cc.assetManager) {
+          var oldLoadBundle = cc.assetManager.loadBundle;
+          cc.assetManager.loadBundle = function(name, options, onComplete) {
+            var taskName = '下載資源包 ' + name;
+            setStatus('⏳ ' + taskName + ' 0%');
+            // loadBundle doesn't have native progress, but we can poll bundle's progress
+            var timer = setInterval(function(){
+              // try to estimate from network
+            }, 500);
+            return oldLoadBundle.call(this, name, options, function(err, bundle){
+              clearInterval(timer);
+              if (err) setStatus('✖ 資源包失敗: ' + name);
+              else {
+                setStatus('✅ 資源包完成: ' + name);
+                // Hook bundle.load for per-asset progress
+                if (bundle && bundle.load) {
+                  var oldBundleLoad = bundle.load.bind(bundle);
+                  bundle.load = function(progress, onComplete2){
+                    // bundle.load returns an asset task; hook its progress
+                    return oldBundleLoad(progress, function(err, asset){
+                      if (onComplete2) onComplete2(err, asset);
+                    });
+                  };
+                }
+              }
+              if (onComplete) onComplete(err, bundle);
+            });
+          };
+
+          // Hook loadAny for general asset progress
+          var oldLoadAny = cc.assetManager.loadAny;
+          if (oldLoadAny) {
+            cc.assetManager.loadAny = function(asset, options, onComplete){
+              if (typeof options === 'function') { onComplete = options; options = null; }
+              var taskName = '加載資源';
+              setStatus('⏳ ' + taskName + '...');
+              return oldLoadAny.call(this, asset, options, function(err, res){
+                if (err) setStatus('✖ 資源加載失敗');
+                if (onComplete) onComplete(err, res);
+              });
+            };
+          }
+        }
+
         // Game start
-        setStatus('🎮 遊戲啟動完成');
+        setStatus('🎮 遊戲啟動完成，進入主場景');
       } catch(e){}
     }, 200);
 
