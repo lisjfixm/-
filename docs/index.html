@@ -37,6 +37,48 @@
 
 </head>
 <body>
+  <!-- Loading Log Overlay -->
+  <style>
+    #load-log {
+      position: fixed; bottom: 15%; left: 10px; right: 10px; z-index: 99998;
+      color: #0f0; font-family: monospace; font-size: 11px;
+      text-align: center; pointer-events: none;
+      text-shadow: 0 0 4px #000;
+      min-height: 16px;
+    }
+  </style>
+  <div id="load-log"></div>
+  <script>
+  (function(){
+    var el = document.getElementById('load-log');
+    function show(msg) {
+      el.textContent = msg;
+    }
+    // Hook console to capture engine loading logs
+    var origLog = console.log, origWarn = console.warn, origErr = console.error;
+    function fmt(args) {
+      try { return Array.from(args).map(function(a){
+        if (typeof a === 'string') return a;
+        try { return JSON.stringify(a); } catch(e) { return String(a); }
+      }).join(' ').substring(0, 120); } catch(e) { return ''; }
+    }
+    console.log = function() { show(fmt(arguments)); origLog.apply(console, arguments); };
+    console.warn = function() { show(fmt(arguments)); origWarn.apply(console, arguments); };
+    console.error = function() { show('ERR: ' + fmt(arguments)); origErr.apply(console, arguments); };
+    show('載入中...');
+    // Auto-hide after game starts (detect canvas rendering or 15s timeout)
+    var hideTimer = setTimeout(function(){ el.style.opacity = '0'; }, 15000);
+    // Also try to detect Cocos game start
+    var checkInt = setInterval(function(){
+      try {
+        if (window.cc && cc.game && cc.game.isPlaying) {
+          el.style.transition = 'opacity 1s'; el.style.opacity = '0';
+          clearInterval(checkInt); clearTimeout(hideTimer);
+        }
+      } catch(e){}
+    }, 500);
+  })();
+  </script>
   <div id="GameDiv" cc_exact_fit_screen="true">
       <div id="Cocos3dGameContainer">
         <canvas id="GameCanvas" oncontextmenu="event.preventDefault()" tabindex="99"></canvas>
