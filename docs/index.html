@@ -37,46 +37,88 @@
 
 </head>
 <body>
-  <!-- Loading Log Overlay -->
+  <!-- Persistent Status Panel -->
   <style>
-    #load-log {
-      position: fixed; bottom: 15%; left: 10px; right: 10px; z-index: 99998;
+    #gm-status {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 99998;
+      background: rgba(0,0,0,0.55);
       color: #0f0; font-family: monospace; font-size: 11px;
       text-align: center; pointer-events: none;
-      text-shadow: 0 0 4px #000;
-      min-height: 16px;
+      padding: 4px 8px; min-height: 18px;
+      text-shadow: 0 0 3px #000;
+      line-height: 1.4;
     }
   </style>
-  <div id="load-log"></div>
+  <div id="gm-status">啟動中...</div>
   <script>
   (function(){
-    var el = document.getElementById('load-log');
-    function show(msg) {
+    var el = document.getElementById('gm-status');
+    var lastMsg = '';
+    function setStatus(msg) {
+      if (msg === lastMsg) return;
+      lastMsg = msg;
       el.textContent = msg;
     }
-    // Hook console to capture engine loading logs
+    // Hook console
     var origLog = console.log, origWarn = console.warn, origErr = console.error;
     function fmt(args) {
       try { return Array.from(args).map(function(a){
         if (typeof a === 'string') return a;
-        try { return JSON.stringify(a); } catch(e) { return String(a); }
-      }).join(' ').substring(0, 120); } catch(e) { return ''; }
+        try { return JSON.stringify(a).substring(0,80); } catch(e) { return String(a); }
+      }).join(' ').substring(0, 150); } catch(e) { return ''; }
     }
-    console.log = function() { show(fmt(arguments)); origLog.apply(console, arguments); };
-    console.warn = function() { show(fmt(arguments)); origWarn.apply(console, arguments); };
-    console.error = function() { show('ERR: ' + fmt(arguments)); origErr.apply(console, arguments); };
-    show('載入中...');
-    // Auto-hide after game starts (detect canvas rendering or 15s timeout)
-    var hideTimer = setTimeout(function(){ el.style.opacity = '0'; }, 15000);
-    // Also try to detect Cocos game start
-    var checkInt = setInterval(function(){
+    console.log = function() {
+      var m = fmt(arguments);
+      if (m && m.length > 3) setStatus('📋 ' + m);
+      origLog.apply(console, arguments);
+    };
+    console.warn = function() { setStatus('⚠ ' + fmt(arguments)); origWarn.apply(console, arguments); };
+    console.error = function() { setStatus('✖ ' + fmt(arguments)); origErr.apply(console, arguments); };
+
+    // Once Cocos is ready, hook scene/bundle events
+    var tryHook = setInterval(function(){
       try {
-        if (window.cc && cc.game && cc.game.isPlaying) {
-          el.style.transition = 'opacity 1s'; el.style.opacity = '0';
-          clearInterval(checkInt); clearTimeout(hideTimer);
+        if (!window.cc || !cc.director) return;
+        clearInterval(tryHook);
+
+        // Scene change tracking
+        cc.director.on(cc.Director.EVENT_AFTER_SCENE_LAUNCH, function(scene){
+          var name = scene.name || '未知場景';
+          var desc = describeScene(name);
+          setStatus('🎬 進入場景: ' + desc);
+        });
+
+        // Bundle loading
+        if (cc.assetManager) {
+          var oldLoadBundle = cc.assetManager.loadBundle;
+          cc.assetManager.loadBundle = function(name, options, onComplete) {
+            setStatus('📦 加載資源包: ' + name);
+            return oldLoadBundle.call(this, name, options, function(err, bundle){
+              if (err) setStatus('✖ 資源包失敗: ' + name);
+              else setStatus('✅ 資源包完成: ' + name);
+              if (onComplete) onComplete(err, bundle);
+            });
+          };
         }
+
+        // Game start
+        setStatus('🎮 遊戲啟動完成');
       } catch(e){}
-    }, 500);
+    }, 200);
+
+    function describeScene(name) {
+      var map = {
+        'Main': '主場景 / 戰鬥開始',
+        'Loading': '加載畫面',
+        'Login': '登錄畫面',
+        'Hall': '大廳',
+        'UILayer': 'UI層',
+      };
+      for (var key in map) {
+        if (name.indexOf(key) >= 0) return map[key];
+      }
+      return name;
+    }
   })();
   </script>
   <div id="GameDiv" cc_exact_fit_screen="true">
