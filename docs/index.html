@@ -198,6 +198,7 @@
   <button onclick="gmFullPower()">補滿體力</button>
   <button onclick="gmAddExp()">+100000 經驗</button>
   <button onclick="gmMaxEquip()">獲得頂級裝備(Q5)</button>
+  <button onclick="gmPatrol100h()">強制掛機100小時</button>
   <button onclick="gmReset()">重置存檔</button>
   <button class="gm-close" onclick="gmToggle()">關閉</button>
 </div>
@@ -258,6 +259,21 @@ function gmMaxEquip() {
     if (exists) { exists.num = 1; exists.iswear = 1; }
     else { d.$propData.push({id: id, num: 1, iswear: 1}); }
   });
+  gmWrite(d); gmReload();
+}
+function gmPatrol100h() {
+  var d = gmRead();
+  // 100 小時 = 360000 秒
+  var HOURS = 100;
+  // 設定掛機開始時間為 100 小時前
+  d.$patrolStartTime = Date.now() - HOURS * 3600 * 1000;
+  // 標記所有 10 分鐘間隔都已領過隨機道具（100h / 10min = 600 格）
+  d.$patrolRewardProp = [];
+  for (var i = 0; i < HOURS * 6; i++) d.$patrolRewardProp.push(1);
+  d.$patrolRewardPropArr = [];
+  // 直接發放 100 小時的金幣和經驗（繞過 towerTop 上限）
+  d.$coin = (d.$coin || 0) + 500000;
+  d.$roleExp = (d.$roleExp || 0) + 200000;
   gmWrite(d); gmReload();
 }
 function gmReset() {
