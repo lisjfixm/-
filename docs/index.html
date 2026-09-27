@@ -197,6 +197,7 @@
   <button onclick="gmMaxLevel()">滿級 & 解鎖關卡</button>
   <button onclick="gmFullPower()">補滿體力</button>
   <button onclick="gmAddExp()">+100000 經驗</button>
+  <button onclick="gmMaxEquip()">獲得頂級裝備(Q5)</button>
   <button onclick="gmReset()">重置存檔</button>
   <button class="gm-close" onclick="gmToggle()">關閉</button>
 </div>
@@ -243,6 +244,20 @@ function gmFullPower() {
 function gmAddExp() {
   var d = gmRead();
   d.$roleExp = (d.$roleExp || 0) + 100000;
+  gmWrite(d); gmReload();
+}
+function gmMaxEquip() {
+  var d = gmRead();
+  // Q5 最強裝備: 武器+頭飾+腰帶+衣服+手套+靴子
+  var equipIds = [10165, 10021, 10022, 10023, 10024, 10025];
+  d.$wearProp = equipIds.slice();
+  // 加入 propData
+  d.$propData = d.$propData || [];
+  equipIds.forEach(function(id){
+    var exists = d.$propData.find(function(p){ return p.id === id; });
+    if (exists) { exists.num = 1; exists.iswear = 1; }
+    else { d.$propData.push({id: id, num: 1, iswear: 1}); }
+  });
   gmWrite(d); gmReload();
 }
 function gmReset() {
